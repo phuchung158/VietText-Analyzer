@@ -5,6 +5,9 @@ import torch
 import pickle
 import os
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # --- CẤU HÌNH GIAO DIỆN DASHBOARD ---
 st.set_page_config(page_title="VietText Analyzer Dashboard", page_icon="🚀", layout="wide")
@@ -276,58 +279,92 @@ elif page == "⚡ Trình dự đoán song song tổng lực":
                 st.info(f"Chủ đề được hệ thống nhận diện: **{t}**")
 
 # ==============================================================================
-# TRANG 3: ĐỘ CHÍNH XÁC & CONFUSION MATRIX HÌNH ẢNH
+# TRANG 3: ĐÁNH GIÁ CHI TIẾT (LIVE EVALUATION)
 # ==============================================================================
 elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
-    st.title("📊 Kết Quả Đánh Giá Thực Nghiệm Trên Tập Validation")
-    st.markdown("Bảng tổng hợp các chỉ số đo lường khoa học thu được sau quá trình huấn luyện các mô hình trên hệ thống Kaggle GPU.")
-    
-    # 1. Bảng so sánh các chỉ số hiệu năng đạt được
-    st.subheader("📈 Bảng so sánh hiệu năng tổng quan")
-    metrics_chart = {
-        "Mô hình thử nghiệm": ["TF-IDF + Machine Learning (Baseline)", "LSTM + Word2Vec (Deep Learning)", "PhoBERT Transformer (SOTA)"],
-        "Độ chính xác (Accuracy)": ["84.58%", "85.20%", "88.17%"],
-        "Precision": ["84.50%", "85.10%", "88.15%"],
-        "Recall": ["84.58%", "85.20%", "88.17%"],
-        "F1-Score": ["84.52%", "85.15%", "88.17%"]
-    }
-    st.table(pd.DataFrame(metrics_chart))
-    
-    st.divider()
-    
-    # 2. Hiển thị Ma trận nhầm lẫn (Confusion Matrix) bằng hình ảnh thực tế
-    st.subheader("🧩 Ma trận nhầm lẫn đồ thị (Confusion Matrix)")
-    st.write("Đồ thị phân bố nhầm lẫn giữa các nhãn thực tế (True Label) và nhãn dự đoán (Predicted Label):")
-    
-    col_img1, col_img2, col_img3 = st.columns(3)
-    
-    with col_img1:
-        st.markdown("<center><b>TF-IDF Confusion Matrix</b></center>", unsafe_allow_html=True)
-        if os.path.exists("models/cm_tfidf.png"):
-            st.image("models/cm_tfidf.png", use_container_width=True)
-        else:
-            st.info("ℹ️ Đang quét file ảnh đồ thị tại đường dẫn: `models/cm_tfidf.png` trên GitHub.")
-            
-    with col_img2:
-        st.markdown("<center><b>LSTM Confusion Matrix</b></center>", unsafe_allow_html=True)
-        if os.path.exists("models/cm_lstm.png"):
-            st.image("models/cm_lstm.png", use_container_width=True)
-        else:
-            st.info("ℹ️ Đang quét file ảnh đồ thị tại đường dẫn: `models/cm_lstm.png` trên GitHub.")
-            
-    with col_img3:
-        st.markdown("<center><b>PhoBERT Confusion Matrix</b></center>", unsafe_allow_html=True)
-        if os.path.exists("models/cm_phobert.png"):
-            st.image("models/cm_phobert.png", use_container_width=True)
-        else:
-            st.info("ℹ️ Đang quét file ảnh đồ thị tại đường dẫn: `models/cm_phobert.png` trên GitHub.")
+    st.title("📊 Model Performance Live Evaluation")
+    st.markdown("Hệ thống sẽ tiến hành chạy dự đoán trên tệp `validation.xlsx` để tính toán các chỉ số thực tế.")
 
-    st.divider()
-    
-    # 3. Phần nhận xét khoa học phục vụ báo cáo đồ án trước hội đồng chấm điểm
-    st.subheader("💡 Nhận xét kết quả thực nghiệm học máy")
-    st.markdown("""
-    * **PhoBERT Transformer (VinAI)** mang lại hiệu năng vượt trội hoàn toàn so với hai kiến trúc còn lại với độ chính xác áp đảo đạt **88.17%**. Nhờ áp dụng cơ chế *Self-Attention đa đầu*, mô hình có khả năng ghi nhớ dài hạn ngữ cảnh đa chiều, xử lý rất tốt các hiện tượng đảo cấu trúc câu phủ định, từ viết tắt và các từ ngữ mang sắc thái đặc trưng của sinh viên Việt Nam.
-    * **LSTM kết hợp Word2Vec** cho kết quả tiệm cận tốt (**85.20%**), thể hiện thế mạnh trong việc học đặc trưng chuỗi thời gian của các khối từ đứng cạnh nhau, tương đối thích hợp với chuỗi ngắn nhưng dễ sụt giảm khi câu phản hồi quá dài.
-    * **TF-IDF kết hợp Machine Learning truyền thống** đóng vai trò là một mô hình Baseline ổn định (**84.58%**). Ưu điểm tuyệt đối là tốc độ tính toán tính bằng mili-giây và tiêu tốn cực ít tài nguyên phần cứng, nhưng nhược điểm cốt lõi là phân tách từ độc lập, bỏ qua hoàn toàn trật tự sắp xếp từ ngữ cảnh trong câu.
-    """)
+    VALID_PATH = "./dataset/validation.xlsx"
+
+    if os.path.exists(VALID_PATH):
+        # 1. Đọc dữ liệu Validation
+        df_valid = pd.read_excel(VALID_PATH)
+        
+        # Giả định: Cột 0 là văn bản, Cột 1 là nhãn Sentiment thật (y_true)
+        y_true = df_valid.iloc[:, 1].values
+        sentences = df_valid.iloc[:, 0].values
+
+        st.info(f"Đã nạp {len(df_valid)} mẫu dữ liệu từ tập Validation để đánh giá.")
+
+        # Tạo nút bấm để bắt đầu tính toán (tránh web bị lag khi vừa mở trang)
+        if st.button("Bắt đầu chạy đánh giá mô hình thực tế 🚀"):
+            with st.spinner("Đang chạy dự đoán trên toàn bộ tập dữ liệu (vui lòng đợi)..."):
+                
+                # --- CHẠY DỰ ĐOÁN TF-IDF (LIVE) ---
+                y_pred_tfidf = []
+                if tfidf_m is not None:
+                    y_pred_tfidf = tfidf_m.predict(sentences)
+                
+                # --- CHẠY DỰ ĐOÁN PHOBERT (LIVE - CHẠY THEO BATCH ĐỂ TRÁNH TRÀN RAM) ---
+                y_pred_phobert = []
+                if phobert_m is not None:
+                    for text in sentences:
+                        inputs = phobert_t(str(text), return_tensors="pt", truncation=True, max_length=128)
+                        with torch.no_grad():
+                            logits = phobert_m(**inputs).logits
+                        y_pred_phobert.append(torch.argmax(logits, dim=-1).item())
+                
+                # --- HIỂN THỊ KẾT QUẢ ---
+                st.subheader("1. Bảng chỉ số đo lường thực tế")
+                
+                # Tính Accuracy & F1 live
+                results = []
+                
+                if len(y_pred_tfidf) > 0:
+                    results.append({
+                        "Mô hình": "TF-IDF + ML (Live)",
+                        "Accuracy": f"{accuracy_score(y_true, y_pred_tfidf):.4f}",
+                        "F1-Score": f"{f1_score(y_true, y_pred_tfidf, average='weighted'):.4f}"
+                    })
+                
+                if len(y_pred_phobert) > 0:
+                    results.append({
+                        "Mô hình": "PhoBERT (Live)",
+                        "Accuracy": f"{accuracy_score(y_true, y_pred_phobert):.4f}",
+                        "F1-Score": f"{f1_score(y_true, y_pred_phobert, average='weighted'):.4f}"
+                    })
+                
+                # Thêm kết quả LSTM (Lấy từ báo cáo Kaggle của bạn vì không chạy live được)
+                results.append({
+                    "Mô hình": "LSTM + Word2Vec (Kaggle Result)",
+                    "Accuracy": "0.8520", # Bạn hãy sửa con số này cho đúng kết quả Kaggle của bạn
+                    "F1-Score": "0.8515"
+                })
+                
+                st.table(pd.DataFrame(results))
+
+                # --- VẼ MA TRẬN NHẦM LẪN LIVE ---
+                st.subheader("2. Ma trận nhầm lẫn (Live Confusion Matrix)")
+                c1, c2 = st.columns(2)
+
+                def plot_cm(y_t, y_p, title):
+                    cm = confusion_matrix(y_t, y_p)
+                    fig, ax = plt.subplots(figsize=(5, 4))
+                    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+                    ax.set_xlabel('Predicted Labels')
+                    ax.set_ylabel('True Labels')
+                    ax.set_title(title)
+                    return fig
+
+                with c1:
+                    if len(y_pred_tfidf) > 0:
+                        st.pyplot(plot_cm(y_true, y_pred_tfidf, "TF-IDF Matrix"))
+                
+                with c2:
+                    if len(y_pred_phobert) > 0:
+                        st.pyplot(plot_cm(y_true, y_pred_phobert, "PhoBERT Matrix"))
+
+                st.success("Tính toán hoàn tất! Đây là con số thực tế dựa trên mô hình bạn đã upload.")
+    else:
+        st.error("Không tìm thấy file `./dataset/validation.xlsx`. Vui lòng upload để hệ thống tính toán live.")
