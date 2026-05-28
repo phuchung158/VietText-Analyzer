@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import torch
+import torch.nn as nn
 import pickle
 import os
 import time
@@ -10,111 +11,233 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# --- KHỐI BẪY LỖI IMPORT AN TOÀN TUYỆT ĐỐI ---
-HAS_LSTM_MODEL = True
-
-try:
-    # Thử import từ thư viện keras độc lập
-    from keras.models import load_model
-except Exception:
-    try:
-        # Dự phòng nếu môi trường nạp thông qua tensorflow cũ
-        from tensorflow.keras.models import load_model
-    except Exception:
-        HAS_LSTM_MODEL = False
-
-# --- IMPORT PIPELINE TIỀN XỬ LÝ & PYVI CỦA BẠN ---
+# --- IMPORT PIPELINE TIỀN XỬ LÝ ---
 from utils.preprocessing import preprocess_pipeline
 
-# --- CẤU HÌNH GIAO DIỆN DASHBOARD ---
+# ==============================================================================
+# CẤU HÌNH GIAO DIỆN
+# ==============================================================================
 st.set_page_config(page_title="VietText Analyzer Dashboard", page_icon="🚀", layout="wide")
 
-# --- ĐƯỜNG DẪN TỆP TIN MÔ HÌNH THỰC TẾ ---
-MODEL_PHOBERT = "./models/phobert"
+# --- ĐƯỜNG DẪN MÔ HÌNH ---
+MODEL_PHOBERT        = "./models/phobert"
 LABEL_ENCODER_PHOBERT = "./models/phobert/label_encoder.pkl"
 
-# Đường dẫn TF-IDF
-MODEL_TFIDF = "./models/tfidf/baseline_sentiment_model.pkl"
-LABEL_ENCODER_TFIDF = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
+MODEL_TFIDF          = "./models/tfidf/baseline_sentiment_model.pkl"
+LABEL_ENCODER_TFIDF  = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
 
-# Đường dẫn LSTM
-MODEL_LSTM_PATH = "./models/lstm_word2vec/lstm_sentiment_model.keras"
-VECTORIZER_LSTM_PATH = "./models/lstm_word2vec/lstm_sentiment_vectorizer.pkl"
+# LSTM PyTorch
+MODEL_LSTM_PATH      = "./models/lstm_word2vec/lstm_sentiment_model.pt"
+VOCAB_LSTM_PATH      = "./models/lstm_word2vec/lstm_sentiment_vocab.pkl"
 LABEL_ENCODER_LSTM_PATH = "./models/lstm_word2vec/lstm_sentiment_label_encoder.pkl"
+LSTM_CONFIG_PATH     = "./models/lstm_word2vec/lstm_config.pkl"   # dict: input_size, hidden_size, num_layers, num_classes, max_len
 
-DATASET_EXCEL = "./dataset/train.xlsx" 
-VALID_PATH = "./dataset/validation.xlsx"
+DATASET_EXCEL = "./dataset/train.xlsx"
+VALID_PATH    = "./dataset/validation.xlsx"
 
-# --- HÀM TẢI MÔ HÌNH TỐI ƯU VỚI CACHE ---
+# ==============================================================================
+# ĐỊNH NGHĨA KIẾN TRÚC LSTM PYTORCH
+# Lớp này phải khớp với kiến trúc lúc bạn huấn luyện.
+# Nếu kiến trúc khác, hãy sửa class này cho đúng.
+# ==============================================================================
+class LSTMClassifier(nn.Module):
+    def __init__(self, vocab_size, embed_dim, hidden_size, num_layers, num_classes, pad_idx=0):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
+        self.lstm = nn.LSTM(embed_dim, hidden_size, num_layers=num_layers,
+                            batch_first=True, bidirectional=True, dropout=0.3)
+        self.dropout = nn.Dropout(0.3)
+        self.fc = nn.Linear(hidden_size * 2, num_classes)  # *2 vì bidirectional
+
+    def forward(self, x):
+        emb = self.dropout(self.embedding(x))
+        _, (hidden, _) = self.lstm(emb)
+        # Ghép hidden state của 2 chiều cuối cùng
+        out = torch.cat([hidden[-2], hidden[-1]], dim=1)
+        return self.fc(self.dropout(out))
+
+
+def _require_file(path: str, label: str):
+    """Dừng app ngay nếu file bắt buộc không tồn tại."""
+    if not os.path.exists(path):
+        st.error(f"❌ Không tìm thấy file bắt buộc **{label}**:\n`{path}`\n\nVui lòng kiểm tra lại đường dẫn.")
+        st.stop()
+
+
+# ==============================================================================
+# TẢI MÔ HÌNH — cache để không tải lại mỗi lần render
+# ==============================================================================
 @st.cache_resource
 def load_all_models():
-    # 1. Tải mô hình PhoBERT Deep Learning
-    phobert_model, phobert_tokenizer, phobert_le = None, None, None
-    TARGET_FILE = os.path.join(MODEL_PHOBERT, "model.safetensors")
-    
-    if os.path.exists(TARGET_FILE):
-        try:
-            phobert_model = AutoModelForSequenceClassification.from_pretrained(MODEL_PHOBERT)
-            phobert_tokenizer = AutoTokenizer.from_pretrained(MODEL_PHOBERT)
-        except:
-            phobert_model = None
-            phobert_tokenizer = None
-            
-    if os.path.exists(LABEL_ENCODER_PHOBERT):
-        with open(LABEL_ENCODER_PHOBERT, 'rb') as f:
-            phobert_le = pickle.load(f)
-            
-    if phobert_model is None or phobert_tokenizer is None:
-        phobert_model = AutoModelForSequenceClassification.from_pretrained("vinai/phobert-base", num_labels=3)
-        phobert_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
-    
-    # 2. Tải mô hình TF-IDF
-    tfidf_model, tfidf_le = None, None
-    if os.path.exists(MODEL_TFIDF):
-        with open(MODEL_TFIDF, 'rb') as f:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ── 1. PhoBERT ─────────────────────────────────────────────────────────────
+    _require_file(os.path.join(MODEL_PHOBERT, "model.safetensors"), "PhoBERT weights")
+    _require_file(LABEL_ENCODER_PHOBERT, "PhoBERT label encoder")
+
+    try:
+        phobert_model = AutoModelForSequenceClassification.from_pretrained(MODEL_PHOBERT)
+        phobert_model.to(device)
+        phobert_model.eval()
+        phobert_tokenizer = AutoTokenizer.from_pretrained(MODEL_PHOBERT)
+    except Exception as e:
+        st.error(f"❌ Lỗi khi load PhoBERT: {e}")
+        st.stop()
+
+    with open(LABEL_ENCODER_PHOBERT, "rb") as f:
+        phobert_le = pickle.load(f)
+
+    # ── 2. TF-IDF ──────────────────────────────────────────────────────────────
+    _require_file(MODEL_TFIDF, "TF-IDF model")
+    _require_file(LABEL_ENCODER_TFIDF, "TF-IDF label encoder")
+
+    try:
+        with open(MODEL_TFIDF, "rb") as f:
             tfidf_model = pickle.load(f)
-    if os.path.exists(LABEL_ENCODER_TFIDF):
-        with open(LABEL_ENCODER_TFIDF, 'rb') as f:
+        with open(LABEL_ENCODER_TFIDF, "rb") as f:
             tfidf_le = pickle.load(f)
+    except Exception as e:
+        st.error(f"❌ Lỗi khi load TF-IDF: {e}")
+        st.stop()
 
-    # 3. Tải mô hình LSTM + Bộ Vectorizer tương ứng
-    lstm_model, lstm_vectorizer, lstm_le = None, None, None
-    
-    if HAS_LSTM_MODEL and os.path.exists(MODEL_LSTM_PATH):
-        try:
-            lstm_model = load_model(MODEL_LSTM_PATH, compile=False)
-        except Exception as e:
-            print(f"Lỗi load file .keras: {e}")
-            
-    if os.path.exists(VECTORIZER_LSTM_PATH):
-        try:
-            with open(VECTORIZER_LSTM_PATH, 'rb') as f:
-                lstm_vectorizer = pickle.load(f)
-        except Exception as e:
-            print(f"Lỗi load Vectorizer: {e}")
-            
-    if os.path.exists(LABEL_ENCODER_LSTM_PATH):
-        with open(LABEL_ENCODER_LSTM_PATH, 'rb') as f:
+    # ── 3. LSTM PyTorch ────────────────────────────────────────────────────────
+    _require_file(MODEL_LSTM_PATH,       "LSTM model (.pt)")
+    _require_file(VOCAB_LSTM_PATH,       "LSTM vocab")
+    _require_file(LABEL_ENCODER_LSTM_PATH, "LSTM label encoder")
+    _require_file(LSTM_CONFIG_PATH,      "LSTM config")
+
+    try:
+        with open(VOCAB_LSTM_PATH, "rb") as f:
+            lstm_vocab = pickle.load(f)          # dict: token -> idx
+        with open(LABEL_ENCODER_LSTM_PATH, "rb") as f:
             lstm_le = pickle.load(f)
-            
-    return phobert_model, phobert_tokenizer, phobert_le, tfidf_model, tfidf_le, lstm_model, lstm_vectorizer, lstm_le
+        with open(LSTM_CONFIG_PATH, "rb") as f:
+            cfg = pickle.load(f)
+            # cfg phải có: vocab_size, embed_dim, hidden_size, num_layers, num_classes, max_len
 
-phobert_m, phobert_t, phobert_le, tfidf_m, tfidf_le, lstm_m, lstm_v, lstm_le = load_all_models()
+        lstm_model = LSTMClassifier(
+            vocab_size  = cfg["vocab_size"],
+            embed_dim   = cfg["embed_dim"],
+            hidden_size = cfg["hidden_size"],
+            num_layers  = cfg["num_layers"],
+            num_classes = cfg["num_classes"],
+        )
+        state = torch.load(MODEL_LSTM_PATH, map_location=device)
+        lstm_model.load_state_dict(state)
+        lstm_model.to(device)
+        lstm_model.eval()
+        lstm_max_len = cfg["max_len"]
+    except Exception as e:
+        st.error(f"❌ Lỗi khi load LSTM PyTorch: {e}")
+        st.stop()
 
-# --- THANH ĐIỀU HƯỚNG SIDEBAR ---
+    return (
+        phobert_model, phobert_tokenizer, phobert_le,
+        tfidf_model, tfidf_le,
+        lstm_model, lstm_vocab, lstm_le, lstm_max_len,
+        device
+    )
+
+
+(phobert_m, phobert_t, phobert_le,
+ tfidf_m, tfidf_le,
+ lstm_m, lstm_vocab, lstm_le, lstm_max_len,
+ DEVICE) = load_all_models()
+
+
+# ==============================================================================
+# HELPER: LSTM — tokenize + pad + predict
+# ==============================================================================
+def lstm_texts_to_tensor(texts, vocab, max_len):
+    """Chuyển list[str] đã tiền xử lý thành LongTensor (batch, max_len)."""
+    unk_idx = vocab.get("<UNK>", 0)
+    pad_idx = vocab.get("<PAD>", 0)
+    result = []
+    for text in texts:
+        tokens = text.split()
+        ids = [vocab.get(t, unk_idx) for t in tokens]
+        if len(ids) >= max_len:
+            ids = ids[:max_len]
+        else:
+            ids += [pad_idx] * (max_len - len(ids))
+        result.append(ids)
+    return torch.tensor(result, dtype=torch.long)
+
+
+@torch.no_grad()
+def lstm_predict_batch(texts):
+    """Trả về list nhãn dự đoán (string) cho list văn bản đã tiền xử lý."""
+    tensor = lstm_texts_to_tensor(texts, lstm_vocab, lstm_max_len).to(DEVICE)
+    logits = lstm_m(tensor)
+    pred_ids = torch.argmax(logits, dim=-1).cpu().numpy()
+    return lstm_le.inverse_transform(pred_ids)
+
+
+@torch.no_grad()
+def phobert_predict_batch(texts, batch_size=32):
+    """Trả về list nhãn dự đoán (string) cho PhoBERT, xử lý theo batch thật sự."""
+    all_labels = []
+    for i in range(0, len(texts), batch_size):
+        chunk = texts[i: i + batch_size]
+        inputs = phobert_t(
+            chunk,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=128,
+        )
+        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+        logits = phobert_m(**inputs).logits
+        pred_ids = torch.argmax(logits, dim=-1).cpu().numpy()
+        labels = phobert_le.inverse_transform(pred_ids)
+        all_labels.extend(labels)
+    return all_labels
+
+
+# ==============================================================================
+# CHUẨN HOÁ NHÃN
+# ==============================================================================
+def standardize_labels(label_list):
+    out = []
+    for l in label_list:
+        s = str(l).strip().lower()
+        if any(x in s for x in ["tiêu cực", "neg", "negative"]) or s in ["0", "0.0"]:
+            out.append("0")
+        elif any(x in s for x in ["trung lập", "neu", "neutral"]) or s in ["1", "1.0"]:
+            out.append("1")
+        elif any(x in s for x in ["tích cực", "pos", "positive"]) or s in ["2", "2.0"]:
+            out.append("2")
+        else:
+            out.append(s)
+    return out
+
+
+def label_to_display(label_text):
+    t = str(label_text).upper()
+    if any(w in t for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
+        st.success("🎯 TÍCH CỰC 😍")
+    elif any(w in t for w in ["NEG", "TIÊU CỰC", "0", "NEGATIVE"]):
+        st.error("🎯 TIÊU CỰC 😡")
+    else:
+        st.warning("🎯 TRUNG LẬP 😐")
+
+
+# ==============================================================================
+# SIDEBAR
+# ==============================================================================
 st.sidebar.title("🎮 Hệ Thống Điều Khiển")
 st.sidebar.markdown("Chọn tính năng hiển thị đồ án:")
 page = st.sidebar.radio("Danh mục trang:", [
-    "🏠 Giới thiệu dự án & Dataset", 
-    "⚡ Trình dự đoán song song tổng lực", 
-    "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn"
+    "🏠 Giới thiệu dự án & Dataset",
+    "⚡ Trình dự đoán song song tổng lực",
+    "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn",
 ])
 
 # ==============================================================================
-# TRANG 1: GIỚI THIỆU ĐỀ TÀI & KHÁM PHÁ DỮ LIỆU
+# TRANG 1: GIỚI THIỆU & DATASET
 # ==============================================================================
 if page == "🏠 Giới thiệu dự án & Dataset":
-    st.title("🔮 VietText Analyzer - NLP Research Dashboard")
+    st.title("🔮 VietText Analyzer — NLP Research Dashboard")
     st.markdown("### Phân tích Sắc thái và Chủ đề Ý kiến Sinh viên bằng Machine Learning & Deep Learning")
     st.divider()
 
@@ -122,249 +245,233 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     st.write("""
     Hệ thống giải quyết đồng thời hai bài toán lõi trong xử lý ngôn ngữ tự nhiên sử dụng 3 phương pháp tiếp cận:
     - **TF-IDF + Machine Learning:** Mô hình cơ sở truyền thống nhanh, gọn nhẹ.
-    - **LSTM + Word2Vec:** Mô hình mạng học sâu chuỗi thời gian nắm bắt cấu trúc câu.
+    - **LSTM + Word2Vec (PyTorch):** Mô hình mạng học sâu chuỗi thời gian nắm bắt cấu trúc câu.
     - **PhoBERT Transformer:** Mô hình ngôn ngữ lớn tiên tiến (SOTA) tối ưu cho tiếng Việt.
     """)
 
     st.header("2. Khám phá Bộ dữ liệu (Dataset Explorer)")
-    
+
     @st.cache_data
-    def load_original_excel_data():
-        if os.path.exists(DATASET_EXCEL):
-            try:
-                df = pd.read_excel(DATASET_EXCEL)
-                sent_map = {0: "Tiêu cực (Negative)", 1: "Trung lập (Neutral)", 2: "Tích cực (Positive)"}
-                topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất", 3: "Học phí & Khác"}
-                
-                if len(df.columns) >= 1:
-                    df['sentence'] = df.iloc[:, 0]
-                if len(df.columns) >= 2:
-                    df['sentiment_label'] = df.iloc[:, 1].map(sent_map).fillna(df.iloc[:, 1])
-                if len(df.columns) >= 3:
-                    df['topic_label'] = df.iloc[:, 2].map(topic_map).fillna(df.iloc[:, 2])
-                
-                df = df[df['sentence'].astype(str).str.lower() != 'sentence']
-                return df
-            except:
-                return None
-        return None
+    def load_dataset():
+        _require_file(DATASET_EXCEL, "Dataset train.xlsx")
+        df = pd.read_excel(DATASET_EXCEL)
+        sent_map  = {0: "Tiêu cực", 1: "Trung lập", 2: "Tích cực"}
+        topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất", 3: "Học phí & Khác"}
+        if len(df.columns) >= 1: df["sentence"]       = df.iloc[:, 0]
+        if len(df.columns) >= 2: df["sentiment_label"] = df.iloc[:, 1].map(sent_map).fillna(df.iloc[:, 1])
+        if len(df.columns) >= 3: df["topic_label"]    = df.iloc[:, 2].map(topic_map).fillna(df.iloc[:, 2])
+        df = df[df["sentence"].astype(str).str.lower() != "sentence"]
+        return df
 
-    df = load_original_excel_data()
+    df = load_dataset()
+    st.subheader("📑 100 dòng dữ liệu đầu tiên")
+    display_cols = [c for c in ["sentence", "sentiment_label", "topic_label"] if c in df.columns]
+    st.dataframe(df[display_cols].head(100), use_container_width=True)
+    st.divider()
 
-    if df is not None:
-        st.subheader("📑 Trích xuất hiển thị 100 dòng dữ liệu đầu tiên từ file Excel")
-        display_cols = [c for c in ['sentence', 'sentiment_label', 'topic_label'] if c in df.columns]
-        st.dataframe(df[display_cols].head(100), use_container_width=True)
-        st.divider()
+    st.header("3. Thống kê phân bố dữ liệu")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📊 Phân bố Sắc thái")
+        if "sentiment_label" in df.columns:
+            st.bar_chart(df["sentiment_label"].value_counts(), color="#ff4b4b")
+    with col2:
+        st.subheader("📊 Phân bố Chủ đề")
+        if "topic_label" in df.columns:
+            st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
 
-        st.header("3. Thống kê phân bố dữ liệu thực nghiệm")
-        col_chart1, col_chart2 = st.columns(2)
-        with col_chart1:
-            st.subheader("📊 Phân bố Sắc thái (Sentiment)")
-            if 'sentiment_label' in df.columns:
-                st.bar_chart(df['sentiment_label'].value_counts(), color="#ff4b4b")
-        with col_chart2:
-            st.subheader("📊 Phân bố Chủ đề (Topic / Aspect)")
-            if 'topic_label' in df.columns:
-                st.bar_chart(df['topic_label'].value_counts(), color="#0068c9")
 
 # ==============================================================================
-# TRANG 2: TRÌNH DỰ ĐOÁN SONG SONG 3 MÔ HÌNH
+# TRANG 2: DỰ ĐOÁN SONG SONG
 # ==============================================================================
 elif page == "⚡ Trình dự đoán song song tổng lực":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
-    st.markdown("Nhập câu đánh giá của sinh viên, hệ thống sẽ chạy suy luận song song trên cả 3 mô hình.")
-    
-    user_input = st.text_area("✍️ Nhập nội dung ý kiến cần phân tích:", placeholder="Ví dụ: Thầy cô dạy rất hay, cơ sở vật chất tốt...", height=100)
-    
+    st.markdown("Nhập câu đánh giá của sinh viên — hệ thống chạy song song trên cả 3 mô hình với dữ liệu **thực tế**.")
+
+    user_input = st.text_area(
+        "✍️ Nhập nội dung ý kiến cần phân tích:",
+        placeholder="Ví dụ: Thầy cô dạy rất hay, cơ sở vật chất tốt...",
+        height=100,
+    )
+
     if st.button("Kích hoạt phân tích tổng lực 🚀", type="primary"):
-        if user_input.strip() == "":
+        if not user_input.strip():
             st.warning("⚠️ Vui lòng nhập nội dung văn bản trước khi nhấn phân tích!")
         else:
-            tokens_user = preprocess_pipeline(user_input)
-            processed_user_input = " ".join(tokens_user)
-            
-            with st.expander("🔍 Xem văn bản sau khi qua Pipeline tiền xử lý và tách từ (PyVi)"):
-                st.code(processed_user_input, language="text")
+            tokens = preprocess_pipeline(user_input)
+            processed = " ".join(tokens)
 
-            def display_sentiment_box(label_text):
-                text_upper = str(label_text).upper()
-                if any(w in text_upper for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
-                    st.success("🎯 TÍCH CỰC 😍")
-                elif any(w in text_upper for w in ["NEG", "TIÊU CỰC", "0", "NEGATIVE"]):
-                    st.error("🎯 TIÊU CỰC 😡")
-                else:
-                    st.warning("🎯 TRUNG LẬP 😐")
+            with st.expander("🔍 Văn bản sau tiền xử lý (PyVi)"):
+                st.code(processed, language="text")
 
             st.subheader("📍 1. Kết quả dự đoán sắc thái (Sentiment)")
-            col_m1, col_m2, col_m3 = st.columns(3)
-            
-            with col_m1:
+            col1, col2, col3 = st.columns(3)
+
+            # ── TF-IDF ──────────────────────────────────────────────────────────
+            with col1:
                 st.markdown("### 🔹 TF-IDF + ML")
-                if tfidf_m is not None:
-                    try:
-                        pred_code = tfidf_m.predict([processed_user_input])[0]
-                        pred_label = tfidf_le.inverse_transform([pred_code])[0] if tfidf_le is not None else str(pred_code)
-                        display_sentiment_box(pred_label)
-                    except:
-                        display_sentiment_box("pos" if "tốt" in processed_user_input else "neg")
-                else:
-                    display_sentiment_box("pos" if "tốt" in processed_user_input else "neg")
+                try:
+                    pred_code  = tfidf_m.predict([processed])[0]
+                    pred_label = tfidf_le.inverse_transform([pred_code])[0] if tfidf_le else str(pred_code)
+                    label_to_display(pred_label)
+                except Exception as e:
+                    st.error(f"Lỗi TF-IDF: {e}")
 
-            with col_m2:
+            # ── LSTM PyTorch ─────────────────────────────────────────────────────
+            with col2:
                 st.markdown("### 🔹 LSTM + Word2Vec")
-                if lstm_m is not None and lstm_v is not None:
-                    try:
-                        lstm_sequences = lstm_v([processed_user_input]).numpy()
-                        lstm_preds = lstm_m.predict(lstm_sequences, verbose=0)
-                        pred_id = np.argmax(lstm_preds, axis=-1)[0]
-                        pred_label = lstm_le.inverse_transform([pred_id])[0] if lstm_le is not None else str(pred_id)
-                        display_sentiment_box(pred_label)
-                    except:
-                        display_sentiment_box("pos" if "tốt" in processed_user_input else "neg")
-                else:
-                    display_sentiment_box("pos" if "tốt" in processed_user_input else "neg")
+                try:
+                    pred_label = lstm_predict_batch([processed])[0]
+                    label_to_display(pred_label)
+                except Exception as e:
+                    st.error(f"Lỗi LSTM: {e}")
 
-            with col_m3:
+            # ── PhoBERT ──────────────────────────────────────────────────────────
+            with col3:
                 st.markdown("### 🔹 PhoBERT (SOTA)")
                 try:
-                    inputs = phobert_t(processed_user_input, return_tensors="pt", truncation=True, max_length=128)
-                    with torch.no_grad():
-                        logits = phobert_m(**inputs).logits
-                    pred_id = torch.argmax(logits, dim=-1).item()
-                    pred_label = phobert_le.inverse_transform([pred_id])[0] if phobert_le is not None else str(pred_id)
-                    display_sentiment_box(pred_label)
+                    pred_label = phobert_predict_batch([processed])[0]
+                    label_to_display(pred_label)
                 except Exception as e:
-                    st.error(f"Lỗi: {str(e)}")
+                    st.error(f"Lỗi PhoBERT: {e}")
 
+            # ── Topic Analysis ────────────────────────────────────────────────────
             st.markdown("---")
             st.subheader("🎯 2. Nhận diện Chủ đề Phản hồi (Topic Analysis)")
             topics_dict = {
-                "Cơ sở vật chất & Thiết bị trường học (Facility) 🏫": ["máy_lạnh", "điều_hòa", "phòng_học", "bàn_ghế", "wifi", "mạng", "thang_máy", "nhà_vệ_sinh", "giữ_xe", "bãi_xe", "máy_chiếu", "thiết_bị", "cơ_sở_vật_chất"],
-                "Chất lượng Giảng dạy & Giảng viên 👨‍🏫": ["thầy", "cô", "giảng_viên", "giảng_dạy", "nhiệt_tình", "kiến_thức", "giảng_bài", "dễ_hiểu", "khó_hiểu", "môn_học", "học_tập", "truyền_đạt"],
-                "Học phí & Chính sách Tài chính 💰": ["tiền_học", "học_phí", "đắt", "rẻ", "tăng_học_phí", "nộp_tiền", "tài_chính", "kinh_phí", "học_bổng"]
+                "Cơ sở vật chất & Thiết bị 🏫": [
+                    "máy_lạnh", "điều_hòa", "phòng_học", "bàn_ghế", "wifi", "mạng",
+                    "thang_máy", "nhà_vệ_sinh", "giữ_xe", "bãi_xe", "máy_chiếu",
+                    "thiết_bị", "cơ_sở_vật_chất",
+                ],
+                "Chất lượng Giảng dạy & Giảng viên 👨‍🏫": [
+                    "thầy", "cô", "giảng_viên", "giảng_dạy", "nhiệt_tình",
+                    "kiến_thức", "giảng_bài", "dễ_hiểu", "khó_hiểu",
+                    "môn_học", "học_tập", "truyền_đạt",
+                ],
+                "Học phí & Chính sách Tài chính 💰": [
+                    "tiền_học", "học_phí", "đắt", "rẻ", "tăng_học_phí",
+                    "nộp_tiền", "tài_chính", "kinh_phí", "học_bổng",
+                ],
             }
-            detected_topics = [t for t, keywords in topics_dict.items() if any(k in processed_user_input for k in keywords)]
-            if not detected_topics: detected_topics.append("Ý kiến chung / Chủ đề khác 📝")
-            for t in detected_topics: st.info(f"Chủ đề được nhận diện: **{t}**")
+            detected = [t for t, kws in topics_dict.items() if any(k in processed for k in kws)]
+            if not detected:
+                detected.append("Ý kiến chung / Chủ đề khác 📝")
+            for t in detected:
+                st.info(f"Chủ đề được nhận diện: **{t}**")
+
 
 # ==============================================================================
-# TRANG 3: ĐÁNH GIÁ 3 MÔ HÌNH TRÊN TOÀN BỘ 2037 MẪU
+# TRANG 3: ĐÁNH GIÁ TOÀN BỘ TẬP VALIDATION — DỮ LIỆU THẬT
 # ==============================================================================
 elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
-    st.title("📊 Model Performance Live Evaluation (Full Dataset)")
-    
-    if os.path.exists(VALID_PATH):
-        df_full = pd.read_excel(VALID_PATH)
-        df_full = df_full[df_full.iloc[:, 0].astype(str).str.lower() != 'sentence']
-        total_rows = len(df_full)
-        st.info(f"📋 Đã tìm thấy tệp mẫu kiểm thử độc lập gồm có **{total_rows}** dòng dữ liệu.")
-        
-        y_true_raw = df_full.iloc[:, 1].values
-        sentences = df_full.iloc[:, 0].values
+    st.title("📊 Model Performance — Live Evaluation (Dữ liệu thật)")
 
-        if st.button("Bắt đầu tính toán chỉ số cho toàn bộ 2037 mẫu dữ liệu 🚀", type="primary"):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            start_time = time.time()
-            
-            # --- 1. TIỀN XỬ LÝ ---
-            status_text.text("⏳ Bước 1/4: Đang chạy pipeline tách từ tiếng Việt...")
-            cleaned_sentences = [" ".join(preprocess_pipeline(str(text))) for text in sentences]
-            progress_bar.progress(25)
-            
-            # --- 2. TF-IDF SUY LUẬN ---
-            status_text.text("⏳ Bước 2/4: Mô hình TF-IDF đang suy luận...")
-            try: y_pred_tfidf_raw = tfidf_m.predict(cleaned_sentences) if tfidf_m is not None else ["1"] * total_rows
-            except: y_pred_tfidf_raw = ["1"] * total_rows
-            progress_bar.progress(50)
-            
-            # --- 3. LSTM SUY LUẬN ---
-            status_text.text("⏳ Bước 3/4: Mạng nơ-ron LSTM đang suy luận...")
+    _require_file(VALID_PATH, "validation.xlsx")
+    df_val = pd.read_excel(VALID_PATH)
+    df_val = df_val[df_val.iloc[:, 0].astype(str).str.lower() != "sentence"]
+    total_rows = len(df_val)
+    st.info(f"📋 Tập kiểm thử: **{total_rows}** mẫu")
+
+    sentences  = df_val.iloc[:, 0].values
+    y_true_raw = df_val.iloc[:, 1].values
+
+    if st.button("Bắt đầu đánh giá toàn bộ tập validation 🚀", type="primary"):
+        progress = st.progress(0)
+        status   = st.empty()
+        t0       = time.time()
+
+        # ── Bước 1: Tiền xử lý ────────────────────────────────────────────────
+        status.text("⏳ Bước 1/4: Tiền xử lý văn bản...")
+        cleaned = [" ".join(preprocess_pipeline(str(s))) for s in sentences]
+        progress.progress(10)
+
+        # ── Bước 2: TF-IDF ────────────────────────────────────────────────────
+        status.text("⏳ Bước 2/4: TF-IDF đang suy luận...")
+        try:
+            y_pred_tfidf_raw = tfidf_m.predict(cleaned)
+        except Exception as e:
+            st.error(f"❌ Lỗi TF-IDF predict: {e}")
+            st.stop()
+        progress.progress(30)
+
+        # ── Bước 3: LSTM PyTorch ───────────────────────────────────────────────
+        status.text("⏳ Bước 3/4: LSTM đang suy luận...")
+        try:
+            LSTM_BATCH = 128
+            y_pred_lstm_raw = []
+            for i in range(0, len(cleaned), LSTM_BATCH):
+                chunk = cleaned[i: i + LSTM_BATCH]
+                y_pred_lstm_raw.extend(lstm_predict_batch(chunk))
+                pct = 30 + int((i / len(cleaned)) * 20)
+                progress.progress(min(pct, 50))
+        except Exception as e:
+            st.error(f"❌ Lỗi LSTM predict: {e}")
+            st.stop()
+        progress.progress(50)
+
+        # ── Bước 4: PhoBERT batch thật ────────────────────────────────────────
+        PHOBERT_BATCH = 32
+        total_batches  = int(np.ceil(total_rows / PHOBERT_BATCH))
+        y_pred_phobert_raw = []
+        for i in range(0, len(cleaned), PHOBERT_BATCH):
+            batch_idx = i // PHOBERT_BATCH + 1
+            status.text(f"⏳ Bước 4/4: PhoBERT xử lý batch {batch_idx}/{total_batches}...")
+            chunk = cleaned[i: i + PHOBERT_BATCH]
             try:
-                if lstm_m is not None and lstm_v is not None:
-                    X_lstm_tensor = lstm_v(cleaned_sentences).numpy()
-                    lstm_preds_all = lstm_m.predict(X_lstm_tensor, batch_size=64, verbose=0)
-                    y_pred_lstm_raw = [str(idx) for idx in np.argmax(lstm_preds_all, axis=-1)]
-                else: y_pred_lstm_raw = ["1"] * total_rows
-            except: y_pred_lstm_raw = ["1"] * total_rows
-            progress_bar.progress(75)
-            
-            # --- 4. PHOBERT SUY LUẬN ---
-            y_pred_phobert_raw = []
-            if phobert_m is not None:
-                batch_size = 32
-                total_batches = int(np.ceil(total_rows / batch_size))
-                for i in range(total_batches):
-                    percent_complete = 75 + int((i / total_batches) * 25)
-                    progress_bar.progress(percent_complete)
-                    status_text.text(f"⏳ Bước 4/4: PhoBERT đang xử lý {i+1}/{total_batches}...")
-                    
-                    batch_texts = cleaned_sentences[i*batch_size : min((i+1)*batch_size, total_rows)]
-                    for text_ready in batch_texts:
-                        try:
-                            inputs = phobert_t(text_ready, return_tensors="pt", truncation=True, max_length=128)
-                            with torch.no_grad(): logits = phobert_m(**inputs).logits
-                            pred_id = torch.argmax(logits, dim=-1).item()
-                            y_pred_phobert_raw.append(phobert_le.inverse_transform([pred_id])[0] if phobert_le is not None else str(pred_id))
-                        except: y_pred_phobert_raw.append("1")
-            
-            progress_bar.progress(100)
-            status_text.success(f"🎉 Hoàn thành xử lý tổng lực 3 mô hình trong {time.time() - start_time:.2f} giây!")
+                y_pred_phobert_raw.extend(phobert_predict_batch(chunk, batch_size=PHOBERT_BATCH))
+            except Exception as e:
+                st.error(f"❌ Lỗi PhoBERT batch {batch_idx}: {e}")
+                st.stop()
+            pct = 50 + int((i / len(cleaned)) * 50)
+            progress.progress(min(pct, 99))
 
-            # --- CHUẨN HÓA NHÃN ---
-            def standardize_labels(label_list):
-                standardized = []
-                for l in label_list:
-                    s = str(l).strip().lower()
-                    if 'tiêu cực' in s or 'neg' in s or s in ['0', '0.0']: standardized.append('0')
-                    elif 'trung lập' in s or 'neu' in s or s in ['1', '1.0']: standardized.append('1')
-                    elif 'tích cực' in s or 'pos' in s or s in ['2', '2.0']: standardized.append('2')
-                    else: standardized.append(s)
-                return standardized
+        progress.progress(100)
+        status.success(f"🎉 Hoàn thành trong {time.time() - t0:.2f} giây!")
 
-            y_true_clean = standardize_labels(y_true_raw)
-            y_pred_tfidf_clean = standardize_labels(y_pred_tfidf_raw)
-            y_pred_lstm_clean = standardize_labels(y_pred_lstm_raw)
-            y_pred_phobert_clean = standardize_labels(y_pred_phobert_raw)
+        # ── Chuẩn hoá nhãn ────────────────────────────────────────────────────
+        y_true           = standardize_labels(y_true_raw)
+        y_pred_tfidf     = standardize_labels(y_pred_tfidf_raw)
+        y_pred_lstm      = standardize_labels(y_pred_lstm_raw)
+        y_pred_phobert   = standardize_labels(y_pred_phobert_raw)
 
-            # --- BẢNG KẾT QUẢ ---
-            st.subheader("📈 Chỉ số đo lường hiệu năng live thu được:")
-            live_results = [
-                {"Kiến trúc mô hình": "TF-IDF + ML (Báo cáo thực nghiệm)", "Độ chính xác (Accuracy)": "84.58%", "F1-Score (Weighted)": "84.52%"},
-                {"Kiến trúc mô hình": "LSTM + Word2Vec (Mạng học sâu chuỗi)", "Độ chính xác (Accuracy)": "85.20%", "F1-Score (Weighted)": "85.15%"}
-            ]
-            if len(y_pred_phobert_clean) == total_rows:
-                live_results.append({
-                    "Kiến trúc mô hình": "PhoBERT Transformer (SOTA)",
-                    "Độ chính xác (Accuracy)": f"{accuracy_score(y_true_clean, y_pred_phobert_clean) * 100:.2f}%",
-                    "F1-Score (Weighted)": f"{f1_score(y_true_clean, y_pred_phobert_clean, average='weighted') * 100:.2f}%"
-                })
-            st.table(pd.DataFrame(live_results))
-            
-            # --- VẼ MA TRẬN NHẦM LẪN 3 MÔ HÌNH SONG SONG ---
-            st.subheader("🧩 Ma trận nhầm lẫn đồ thị thực tế (Confusion Matrix):")
-            c1, c2, c3 = st.columns(3)
+        # ── Bảng kết quả ──────────────────────────────────────────────────────
+        st.subheader("📈 Chỉ số hiệu năng thực tế")
+        results = []
+        for name, y_pred in [
+            ("TF-IDF + ML", y_pred_tfidf),
+            ("LSTM + Word2Vec (PyTorch)", y_pred_lstm),
+            ("PhoBERT Transformer (SOTA)", y_pred_phobert),
+        ]:
+            acc = accuracy_score(y_true, y_pred) * 100
+            f1  = f1_score(y_true, y_pred, average="weighted") * 100
+            results.append({
+                "Kiến trúc mô hình": name,
+                "Accuracy (%)": f"{acc:.2f}",
+                "F1-Score Weighted (%)": f"{f1:.2f}",
+            })
+        st.table(pd.DataFrame(results))
 
-            def plot_cm(matrix_data, title):
-                fig, ax = plt.subplots(figsize=(4, 3))
-                sns.heatmap(matrix_data, annot=True, fmt='d', cmap='Blues', ax=ax, xticklabels=["Neg", "Neu", "Pos"], yticklabels=["Neg", "Neu", "Pos"])
-                ax.set_xlabel('Predicted', fontsize=8); ax.set_ylabel('True', fontsize=8)
-                ax.set_title(title, fontsize=9, fontweight='bold')
-                plt.tight_layout()
-                return fig
+        # ── Confusion Matrix ───────────────────────────────────────────────────
+        st.subheader("🧩 Ma trận nhầm lẫn (từ dự đoán thực tế)")
+        LABELS     = ["0", "1", "2"]
+        TICK_NAMES = ["Neg", "Neu", "Pos"]
 
-            with c1:
-                # Trả ma trận TF-IDF 3x3 sạch đẹp, vuông vắn
-                cm_tfidf = confusion_matrix(y_true_clean, y_pred_tfidf_clean, labels=['0', '1', '2'])
-                if cm_tfidf[1, 2] > 200: cm_tfidf = np.array([[598, 42, 44], [31, 452, 77], [18, 102, 673]])
-                st.pyplot(plot_cm(cm_tfidf, "TF-IDF Matrix"))
-            with c2:
-                # Ma trận LSTM 3x3 chuẩn đối xứng
-                cm_lstm = np.array([[642, 14, 30], [28, 412, 120], [10, 48, 733]])
-                st.pyplot(plot_cm(cm_lstm, "LSTM Matrix"))
-            with c3:
-                if len(y_pred_phobert_clean) == total_rows:
-                    st.pyplot(plot_cm(confusion_matrix(y_true_clean, y_pred_phobert_clean, labels=['0', '1', '2']), "PhoBERT Matrix"))
-    else:
-        st.error("⚠️ Không tìm thấy file dữ liệu `./dataset/validation.xlsx` để chạy thực nghiệm.")
+        def plot_cm(y_t, y_p, title):
+            cm  = confusion_matrix(y_t, y_p, labels=LABELS)
+            fig, ax = plt.subplots(figsize=(4, 3))
+            sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax,
+                        xticklabels=TICK_NAMES, yticklabels=TICK_NAMES)
+            ax.set_xlabel("Predicted", fontsize=8)
+            ax.set_ylabel("True", fontsize=8)
+            ax.set_title(title, fontsize=9, fontweight="bold")
+            plt.tight_layout()
+            return fig
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.pyplot(plot_cm(y_true, y_pred_tfidf,   "TF-IDF Matrix"))
+        with c2:
+            st.pyplot(plot_cm(y_true, y_pred_lstm,    "LSTM Matrix"))
+        with c3:
+            st.pyplot(plot_cm(y_true, y_pred_phobert, "PhoBERT Matrix"))
