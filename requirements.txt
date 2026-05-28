@@ -5,7 +5,6 @@ pyvi
 matplotlib
 requests
 gensim
-tensorflow
 torch
 transformers
 sentencepiece
