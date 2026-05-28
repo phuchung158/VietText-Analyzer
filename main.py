@@ -401,31 +401,34 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             c1, c2 = st.columns(2)
 
             def plot_cm(y_t, y_p, title):
-                cm = confusion_matrix(y_t, y_p)
-                fig, ax = plt.subplots(figsize=(4.5, 3.5))
-                unique_labels = sorted(list(set(y_t) | set(y_p)))
+                # 1. Tìm tất cả các nhãn xuất hiện thực tế
+                raw_labels = sorted(list(set(y_t) | set(y_p)))
+                
+                # 2. KHỬ LỖI: Loại bỏ hoàn toàn các chuỗi tiêu đề cột bị lẫn vào dữ liệu
+                invalid_keywords = ["sentiment", "label", "target", "emotion", "y_true", "y_pred"]
+                clean_labels = [l for l in raw_labels if str(l).strip().lower() not in invalid_keywords]
+                
+                # 3. Tính toán ma trận nhầm lẫn dựa trên danh sách nhãn đã được làm sạch
+                cm = confusion_matrix(y_t, y_p, labels=clean_labels)
+                
+                # 4. Ánh xạ tên nhãn sang Tiếng Việt để hiển thị lên các trục đồ thị
                 display_labels = []
-                for l in unique_labels:
+                for l in clean_labels:
                     if '0' in l or 'neg' in l: display_labels.append("Tiêu cực")
                     elif '1' in l or 'neu' in l: display_labels.append("Trung lập")
                     elif '2' in l or 'pos' in l: display_labels.append("Tích cực")
-                    else: display_labels.append(l)
+                    else: display_labels.append(str(l))
 
+                # 5. Khởi tạo khung vẽ đồ thị Seaborn Heatmap
+                fig, ax = plt.subplots(figsize=(4.5, 3.5))
                 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
                             xticklabels=display_labels, yticklabels=display_labels)
-                ax.set_xlabel('Predicted Labels')
-                ax.set_ylabel('True Labels')
-                ax.set_title(title)
+                
+                ax.set_xlabel('Predicted Labels', fontsize=10)
+                ax.set_ylabel('True Labels', fontsize=10)
+                ax.set_title(title, fontsize=11, fontweight='bold')
                 plt.tight_layout()
                 return fig
-
-            with c1:
-                if len(y_pred_tfidf) == total_rows:
-                    st.pyplot(plot_cm(y_true, y_pred_tfidf, "TF-IDF Matrix (2037 mẫu)"))
-            
-            with c2:
-                if len(y_pred_phobert) == total_rows:
-                    st.pyplot(plot_cm(y_true, y_pred_phobert, "PhoBERT Matrix (2037 mẫu)"))
                     
     else:
         st.error("⚠️ Không tìm thấy file dữ liệu `./dataset/validation.xlsx` trên GitHub để thực hiện đánh giá.")
