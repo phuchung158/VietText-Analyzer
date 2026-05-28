@@ -94,21 +94,33 @@ if page == "🏠 Giới thiệu dự án & Dataset":
                 # Sử dụng pandas để đọc định dạng file Excel (.xlsx) từ thư mục ./dataset/
                 df = pd.read_excel(DATASET_EXCEL)
                 
-                # Ánh xạ nhãn số sang chữ tiếng Việt để hội đồng dễ quan sát
+                # Định nghĩa bộ từ điển ánh xạ nhãn số -> chữ tiếng Việt
                 sent_map = {0: "Tiêu cực (Negative)", 1: "Trung lập (Neutral)", 2: "Tích cực (Positive)"}
                 topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất (Facility)", 3: "Học phí & Khác"}
                 
-                # Kiểm tra và map tự động nếu cột tồn tại trong file excel của bạn
+                # --- TỰ ĐỘNG DÒ TÊN CỘT THEO VỊ TRÍ (Độ chính xác cao nhất) ---
+                # Thông thường file dataset sẽ có cấu trúc: Cột 0 = Văn bản, Cột 1 = Sentiment, Cột 2 = Topic
+                if len(df.columns) >= 1:
+                    df['sentence'] = df.iloc[:, 0] # Lấy cột đầu tiên làm câu văn bản
+                
+                if len(df.columns) >= 2:
+                    # Lấy cột thứ hai làm cột Sắc thái và ánh xạ nhãn
+                    df['sentiment_label'] = df.iloc[:, 1].map(sent_map).fillna(df.iloc[:, 1])
+                
+                if len(df.columns) >= 3:
+                    # Lấy cột thứ ba làm cột Chủ đề và ánh xạ nhãn
+                    df['topic_label'] = df.iloc[:, 2].map(topic_map).fillna(df.iloc[:, 2])
+                
+                # --- TRƯỜNG HỢP DỰ PHÒNG: DÒ THEO TÊN CỘT THỰC TẾ ---
                 for col in df.columns:
-                    if 'sent' in col.lower() or 'emotion' in col.lower():
+                    col_lower = str(col).lower()
+                    if col_lower in ['sentence', 'text', 'raw_text', 'content']:
+                        df['sentence'] = df[col]
+                    if col_lower in ['sentiment', 'label', 'emotion', 'senti']:
                         df['sentiment_label'] = df[col].map(sent_map).fillna(df[col])
-                    if 'topic' in col.lower() or 'aspect' in col.lower():
+                    if col_lower in ['topic', 'aspect', 'class', 'theme']:
                         df['topic_label'] = df[col].map(topic_map).fillna(df[col])
                         
-                # Đổi tên cột hiển thị nội dung câu cho đồng bộ nếu cần
-                if 'sentence' not in df.columns and len(df.columns) > 0:
-                    df = df.rename(columns={df.columns[0]: 'sentence'})
-                    
                 return df
             except Exception as e:
                 st.error(f"Lỗi khi đọc file Excel: {str(e)}")
