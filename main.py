@@ -71,111 +71,90 @@ page = st.sidebar.radio("Danh mục trang:", [
     "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn"
 ])
 
-# --- TRANG 1: GIỚI THIỆU DỰ ÁN ---
+# ==============================================================================
+# TRANG 1: GIỚI THIỆU ĐỀ TÀI & KHÁM PHÁ DỮ LIỆU (EDA)
+# ==============================================================================
 if page == "🏠 Giới thiệu dự án":
-    st.title("🔮 VietText Analyzer - NLP Dashboard")
-    st.markdown("### Hệ thống phân loại sắc thái ý kiến và phân tích chủ đề phản hồi của sinh viên")
+    st.title("🔮 VietText Analyzer - NLP Research Dashboard")
+    st.markdown("### Phân tích Sắc thái và Chủ đề Ý kiến Sinh viên bằng Machine Learning & Deep Learning")
     st.divider()
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("#### 🎯 Mục tiêu đồ án")
-        st.write("Xây dựng mô hình thử nghiệm so sánh hiệu năng thực tế giữa 3 thế hệ kiến trúc xử lý ngôn ngữ tự nhiên (NLP) phổ biến đối với dữ liệu văn bản tiếng Việt.")
-        
-        st.markdown("#### 📊 Các kiến trúc thử nghiệm")
-        st.markdown("""
-        1. **Mô hình Baseline (Machine Learning):** Kết hợp trích xuất đặc trưng **TF-IDF** và thuật toán học máy (Logistic Regression/LinearSVC).
-        2. **Mô hình Deep Learning chuỗi:** Kiến trúc mạng hồi quy tuần hoàn **LSTM** tích hợp tầng nhúng từ ngữ cảnh **Word2Vec**.
-        3. **Mô hình State-of-the-art (Transformer):** Kiến trúc học sâu tiên tiến **PhoBERT** của VinAI được tiền huấn luyện trên kho dữ liệu tiếng Việt khổng lồ.
-        """)
-    
-    with col2:
-        st.success("✅ Trạng thái hệ thống: Live & Stable")
-        st.info(f"💻 Môi trường chạy: Python {os.sys.version.split()[0]}")
-        st.write("**Dữ liệu thực nghiệm:** Các ý kiến phản hồi về giảng dạy, cơ sở vật chất, học phí trường học.")
 
-# --- TRANG 2: TRÌNH DỰ ĐOÁN SONG SONG ĐA MÔ HÌNH ---
-elif page == "⚡ Trình dự đoán song song tổng lực":
-    st.title("⚡ Real-time Multi-Model Inference Dashboard")
-    st.markdown("Nhập một câu đánh giá bất kỳ của sinh viên, hệ thống sẽ gọi **đồng thời các mô hình** và bộ phân tích chủ đề ngữ nghĩa để đưa ra kết quả trực quan đồng thời.")
-    
-    # Khung nhập văn bản
-    user_input = st.text_area("✍️ Nhập nội dung ý kiến cần phân tích:", placeholder="Ví dụ: Giảng viên dạy rất nhiệt tình và dễ hiểu nhưng máy chiếu ở phòng học thỉnh thoảng bị lỗi mờ hình...", height=100)
-    
-    if st.button("Kích hoạt phân tích tổng lực 🚀", type="primary"):
-        if user_input.strip() == "":
-            st.warning("⚠️ Vui lòng nhập nội dung văn bản trước khi nhấn phân tích!")
-        else:
-            # Định nghĩa hàm tiện ích để gán màu sắc hiển thị dựa trên chuỗi văn bản nhãn
-            def display_sentiment_box(label_text):
-                text_upper = str(label_text).upper()
-                if any(w in text_upper for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
-                    st.success("🎯 TÍCH CỰC 😍")
-                elif any(w in text_upper for w in ["NEG", "TIÊU CỰC", "0", "NEGATIVE"]):
-                    st.error("🎯 TIÊU CỰC 😡")
-                else:
-                    st.warning("🎯 TRUNG LẬP 😐")
+    # --- 1. GIỚI THIỆU ĐỀ TÀI ---
+    st.header("1. Giới thiệu đề tài")
+    st.write("""
+    Đề tài tập trung vào việc xây dựng hệ thống tự động phân loại các ý kiến phản hồi của sinh viên Việt Nam. 
+    Hệ thống giải quyết đồng thời hai bài toán:
+    - **Sentiment Analysis:** Xác định thái độ (Tích cực, Tiêu cực, Trung lập).
+    - **Topic Classification:** Xác định khía cạnh được nhắc tới (Giảng viên, Cơ sở vật chất, Học phí...).
+    """)
 
-            # ----------------------------------------------------
-            # PHẦN 1: PHÂN TÍCH CẢM XÚC (SENTIMENT ANALYSIS)
-            # ----------------------------------------------------
-            st.subheader("📍 1. Kết quả dự đoán sắc thái (Sentiment)")
-            col_m1, col_m2, col_m3 = st.columns(3)
+    # --- 2. THÔNG TIN DATASET ---
+    st.header("2. Khám phá Bộ dữ liệu (Dataset Explorer)")
+    
+    # Hàm nạp dữ liệu từ file csv trên GitHub của bạn
+    @st.cache_data
+    def load_original_data():
+        # Giả sử file của bạn tên là synthetic_train.csv ở thư mục gốc
+        if os.path.exists("synthetic_train.csv"):
+            df = pd.read_csv("synthetic_train.csv")
+            # Ánh xạ nhãn số sang chữ để dễ quan sát
+            sent_map = {0: "Tiêu cực (Negative)", 1: "Trung lập (Neutral)", 2: "Tích cực (Positive)"}
+            topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất (Facility)", 3: "Khác"}
             
-            # --- CỘT 1: MÔ HÌNH TF-IDF + ML (CHẠY THẬT 100%) ---
-            with col_m1:
-                st.markdown("### 🔹 TF-IDF + ML")
-                if tfidf_m is not None:
-                    try:
-                        pred_code = tfidf_m.predict([user_input])[0]
-                        if tfidf_le is not None:
-                            pred_label = tfidf_le.inverse_transform([pred_code])[0]
-                        else:
-                            pred_label = str(pred_code)
-                        display_sentiment_box(pred_label)
-                    except Exception as e:
-                        st.error(f"Lỗi giải mã file TF-IDF .pkl: {str(e)}")
-                else:
-                    st.caption("⚠️ Đang chạy chế độ giả lập từ khóa cho TF-IDF:")
-                    display_sentiment_box("pos" if "tốt" in user_input.lower() else "neg")
+            if 'sentiment' in df.columns:
+                df['sentiment_label'] = df['sentiment'].map(sent_map)
+            if 'topic' in df.columns:
+                df['topic_label'] = df['topic'].map(topic_map)
+            return df
+        return None
 
-            # --- CỘT 2: MÔ HÌNH LSTM + WORD2VEC (GIẢ LẬP THUẦN LOGIC ĐỂ NÉ LỖI TENSORFLOW) ---
-            with col_m2:
-                st.markdown("### 🔹 LSTM + Word2Vec")
-                st.caption("🤖 Dự đoán dựa trên logic ngữ nghĩa chuỗi (Tránh cài TensorFlow gây sập Python 3.14):")
-                text_lower = user_input.lower()
-                if any(w in text_lower for w in ["tốt", "nhiệt tình", "ok", "tuyệt", "hiểu", "yêu", "vui"]):
-                    st.success("🎯 TÍCH CỰC 😍")
-                elif any(w in text_lower for w in ["hỏng", "nóng", "chậm", "kém", "yếu", "đắt", "bực"]):
-                    st.error("🎯 TIÊU CỰC 😡")
-                else:
-                    st.warning("🎯 TRUNG LẬP 😐")
+    df = load_original_data()
 
-            # --- CỘT 3: MÔ HÌNH PHOBERT TRANSFORMER (CHẠY THẬT VỚI PYTORCH 100%) ---
-            with col_m3:
-                st.markdown("### 🔹 PhoBERT (SOTA)")
-                try:
-                    inputs = phobert_t(user_input, return_tensors="pt", truncation=True, max_length=128)
-                    with torch.no_grad():
-                        logits = phobert_m(**inputs).logits
-                    pred_id = torch.argmax(logits, dim=-1).item()
-                    
-                    # Nếu có file label encoder của PhoBERT thì dùng để dịch nhãn thật
-                    if phobert_le is not None:
-                        try:
-                            pred_label = phobert_le.inverse_transform([pred_id])[0]
-                        except:
-                            pred_label = str(pred_id)
-                    else:
-                        # Fallback map nhãn mặc định của mạng phân loại 3 cổng
-                        mapping = {0: "NEGATIVE", 1: "NEUTRAL", 2: "POSITIVE"}
-                        pred_label = mapping.get(pred_id, str(pred_id))
-                        
-                    display_sentiment_box(pred_label)
-                except Exception as e:
-                    st.error(f"Lỗi tính toán PyTorch: {str(e)}")
+    if df is not None:
+        # Show 100 dữ liệu đầu
+        st.subheader("📑 Trích xuất 100 dòng dữ liệu đầu tiên")
+        st.dataframe(df[['sentence', 'sentiment_label', 'topic_label']].head(100), use_container_width=True)
 
-            st.markdown("---")
+        st.divider()
+
+        # --- 3. PHÂN BỐ NHÃN DÁN ---
+        st.header("3. Thống kê phân bố dữ liệu")
+        
+        col_chart1, col_chart2 = st.columns(2)
+
+        with col_chart1:
+            st.subheader("📊 Phân bố Sắc thái (Sentiment)")
+            sentiment_counts = df['sentiment_label'].value_counts()
+            st.bar_chart(sentiment_counts, color="#ff4b4b")
+            with st.expander("Xem chi tiết số lượng"):
+                st.write(sentiment_counts)
+
+        with col_chart2:
+            st.subheader("📊 Phân bố Chủ đề (Topic)")
+            topic_counts = df['topic_label'].value_counts()
+            st.bar_chart(topic_counts, color="#0068c9")
+            with st.expander("Xem chi tiết số lượng"):
+                st.write(topic_counts)
+
+        st.info("""
+        **Nhận xét dữ liệu:**
+        - Chủ đề **Facility (Cơ sở vật chất)** và **Giảng viên** thường chiếm tỷ trọng lớn nhất.
+        - Dữ liệu thường có sự mất cân bằng giữa các nhãn (nhãn Tích cực và Tiêu cực thường nhiều hơn Trung lập), đây là thách thức lớn khi huấn luyện mô hình.
+        """)
+    else:
+        st.error("⚠️ Không tìm thấy file `synthetic_train.csv` trên GitHub để hiển thị dữ liệu mẫu.")
+        st.info("Mẹo: Hãy đảm bảo bạn đã upload file dataset (.csv) lên cùng thư mục với file main.py")
+
+    # --- 4. KIẾN TRÚC MÔ HÌNH ---
+    st.divider()
+    st.header("4. Các kiến trúc mô hình thử nghiệm")
+    st.markdown("""
+    | Kiến trúc | Đặc điểm trích xuất | Mục tiêu |
+    | :--- | :--- | :--- |
+    | **TF-IDF + ML** | Thống kê tần suất từ (Bag of Words) | Baseline - Hiệu năng nhanh |
+    | **LSTM + Word2Vec** | Học chuỗi thời gian & Vector từ ngữ cảnh | Hiểu quan hệ giữa các từ |
+    | **PhoBERT (VinAI)** | Attention Mechanism (Transformers) | Hiểu sâu ngữ cảnh tiếng Việt (SOTA) |
+    """)
             
             # ----------------------------------------------------
             # PHẦN 2: PHÂN TÍCH CHỦ ĐỀ (TOPIC ANALYSIS GỘP)
