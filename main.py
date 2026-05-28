@@ -17,7 +17,7 @@ MODEL_TFIDF = "./models/tfidf/baseline_sentiment_model.pkl"
 LABEL_ENCODER_TFIDF = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
 
 # Tên file Excel chứa Dataset của bạn đặt ở thư mục gốc
-DATASET_EXCEL = "synthetic_train.xlsx" 
+DATASET_EXCEL = "train.xlsx" 
 
 # --- HÀM TẢI MÔ HÌNH TỐI ƯU (CACHE RESOURCE) ---
 @st.cache_resource
