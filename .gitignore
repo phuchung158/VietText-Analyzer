@@ -1,0 +1,49 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Data
+data/
+*.csv
+
+# Models
+models/
+*.safetensors
+*.pkl
+*.h5
+*.model
+*.bin
+*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+.DS_Store
+
+# OS
+Thumbs.db
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+logs/
