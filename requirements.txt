@@ -1,10 +1,5 @@
-scikit-learn
-numpy
-pandas
-pyvi
-matplotlib
-requests
-gensim
+streamlit
 torch
 transformers
-sentencepiece
+scikit-learn
+pandas
