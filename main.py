@@ -16,7 +16,7 @@ LABEL_ENCODER_PHOBERT = "./models/phobert/label_encoder.pkl"
 MODEL_TFIDF = "./models/tfidf/baseline_sentiment_model.pkl"
 LABEL_ENCODER_TFIDF = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
 
-# Tên file Excel chứa Dataset của bạn đặt ở thư mục gốc
+# Đường dẫn chính xác tới file Excel dataset của bạn trên GitHub
 DATASET_EXCEL = "./dataset/train.xlsx" 
 
 # --- HÀM TẢI MÔ HÌNH TỐI ƯU (CACHE RESOURCE) ---
@@ -39,7 +39,7 @@ def load_all_models():
         with open(LABEL_ENCODER_PHOBERT, 'rb') as f:
             phobert_le = pickle.load(f)
             
-    # Fallback dự phòng nếu thư mục local chưa pull xong file nặng Git LFS
+    # Fallback dự phòng nếu thư mục local chưa tải xong file nặng qua Git LFS
     if phobert_model is None or phobert_tokenizer is None:
         phobert_model = AutoModelForSequenceClassification.from_pretrained("vinai/phobert-base", num_labels=3)
         phobert_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
@@ -81,7 +81,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     Đề tài tập trung vào việc xây dựng hệ thống tự động phân loại các ý kiến phản hồi của sinh viên Việt Nam. 
     Hệ thống giải quyết đồng thời hai bài toán lõi trong xử lý ngôn ngữ tự nhiên:
     - **Sentiment Analysis (Phân tích cảm xúc):** Xác định thái độ ý kiến (Tích cực, Tiêu cực, Trung lập).
-    - **Topic Classification (Phân loại chủ đề):** Xác định khía cạnh hạ tầng trường học được nhắc tới (Giảng viên, Cơ sở vật chất - Facility, Học phí...).
+    - **Topic Classification (Phân loại chủ đề):** Xác định khía cạnh hạ tầng hoặc đào tạo được nhắc tới (Giảng viên, Cơ sở vật chất - Facility, Học phí...).
     """)
 
     # --- 2. THÔNG TIN DATASET EXCEL ---
@@ -90,25 +90,29 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     @st.cache_data
     def load_original_excel_data():
         if os.path.exists(DATASET_EXCEL):
-            # Sử dụng pandas để đọc định dạng file Excel (.xlsx)
-            df = pd.read_excel(DATASET_EXCEL)
-            
-            # Ánh xạ nhãn số sang chữ tiếng Việt để hội đồng dễ quan sát
-            sent_map = {0: "Tiêu cực (Negative)", 1: "Trung lập (Neutral)", 2: "Tích cực (Positive)"}
-            topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất (Facility)", 3: "Học phí & Khác"}
-            
-            # Kiểm tra và map tự động nếu cột tồn tại trong file excel của bạn
-            for col in df.columns:
-                if 'sent' in col.lower() or 'emotion' in col.lower():
-                    df['sentiment_label'] = df[col].map(sent_map).fillna(df[col])
-                if 'topic' in col.lower() or 'aspect' in col.lower():
-                    df['topic_label'] = df[col].map(topic_map).fillna(df[col])
-                    
-            # Đổi tên cột hiển thị nội dung câu cho đồng bộ nếu cần
-            if 'sentence' not in df.columns and len(df.columns) > 0:
-                df = df.rename(columns={df.columns[0]: 'sentence'})
+            try:
+                # Sử dụng pandas để đọc định dạng file Excel (.xlsx) từ thư mục ./dataset/
+                df = pd.read_excel(DATASET_EXCEL)
                 
-            return df
+                # Ánh xạ nhãn số sang chữ tiếng Việt để hội đồng dễ quan sát
+                sent_map = {0: "Tiêu cực (Negative)", 1: "Trung lập (Neutral)", 2: "Tích cực (Positive)"}
+                topic_map = {0: "Chương trình đào tạo", 1: "Giảng viên", 2: "Cơ sở vật chất (Facility)", 3: "Học phí & Khác"}
+                
+                # Kiểm tra và map tự động nếu cột tồn tại trong file excel của bạn
+                for col in df.columns:
+                    if 'sent' in col.lower() or 'emotion' in col.lower():
+                        df['sentiment_label'] = df[col].map(sent_map).fillna(df[col])
+                    if 'topic' in col.lower() or 'aspect' in col.lower():
+                        df['topic_label'] = df[col].map(topic_map).fillna(df[col])
+                        
+                # Đổi tên cột hiển thị nội dung câu cho đồng bộ nếu cần
+                if 'sentence' not in df.columns and len(df.columns) > 0:
+                    df = df.rename(columns={df.columns[0]: 'sentence'})
+                    
+                return df
+            except Exception as e:
+                st.error(f"Lỗi khi đọc file Excel: {str(e)}")
+                return None
         return None
 
     df = load_original_excel_data()
@@ -155,11 +159,11 @@ if page == "🏠 Giới thiệu dự án & Dataset":
         - Phân bố sắc thái mang tính phân cực rõ rệt giữa Tích cực và Tiêu cực, nhãn Trung lập chiếm tỷ lệ nhỏ, tạo ra thách thức lớn về xử lý mất cân bằng dữ liệu khi huấn luyện mạng hồi quy LSTM và mạng Transformer.
         """)
     else:
-        st.error(f"⚠️ Không tìm thấy file dữ liệu Excel `{DATASET_EXCEL}` tại thư mục gốc trên GitHub!")
-        st.info("Mẹo: Bạn chỉ cần upload file Excel mẫu của bạn lên GitHub, đổi tên nó thành 'synthetic_train.xlsx' là trang web sẽ tự động vẽ biểu đồ tuyệt đẹp này.")
+        st.error(f"⚠️ Không tìm thấy file dữ liệu Excel tại đường dẫn cụ thể `{DATASET_EXCEL}`!")
+        st.info("Mẹo: Đảm bảo file Excel của bạn nằm đúng trong nhánh mã nguồn và chữ viết thường trùng khớp với tên tệp thực tế.")
 
 # ==============================================================================
-# TRANG 2: TRÌNH DỰ ĐOÁN SONG SONG ĐA MÔ HÌNH (CĂN LỀ CHUẨN 100% KHÔNG LỖI)
+# TRANG 2: TRÌNH DỰ ĐOÁN SONG SONG ĐA MÔ HÌNH
 # ==============================================================================
 elif page == "⚡ Trình dự đoán song song tổng lực":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
@@ -238,7 +242,7 @@ elif page == "⚡ Trình dự đoán song song tổng lực":
 
             st.markdown("---")
             
-            # --- KHỐI PHÂN TÍCH CHỦ ĐỀ GỘP CHUNG (CĂN LỀ THẲNG THEO DÒNG 112) ---
+            # --- KHỐI PHÂN TÍCH CHỦ ĐỀ GỘP CHUNG ---
             st.subheader("🎯 2. Nhận diện Chủ đề Phản hồi (Topic Analysis)")
             text_low = user_input.lower()
             
@@ -312,6 +316,6 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
     st.subheader("💡 Nhận xét kết quả thực nghiệm học máy")
     st.markdown("""
     * **PhoBERT Transformer (VinAI)** mang lại hiệu năng vượt trội hoàn toàn so với hai kiến trúc còn lại với độ chính xác áp đảo đạt **88.17%**. Nhờ áp dụng cơ chế *Self-Attention đa đầu*, mô hình có khả năng ghi nhớ dài hạn ngữ cảnh đa chiều, xử lý rất tốt các hiện tượng đảo cấu trúc câu phủ định, từ viết tắt và các từ ngữ mang sắc thái đặc trưng của sinh viên Việt Nam.
-    * **LSTM kết hợp Word2Vec** cho kết quả tiệm cận tốt (**85.20%**), thể hiện thế mạnh trong việc học đặc trưng chuỗi thời gian của các khối từ đứng cạnh nhau, tuy nhiên thuật toán dễ bị sụt giảm độ chính xác khi câu phản hồi quá dài do hiện tượng tiêu biến đạo hàm đặc trưng.
+    * **LSTM kết hợp Word2Vec** cho kết quả tiệm cận tốt (**85.20%**), thể hiện thế mạnh trong việc học đặc trưng chuỗi thời gian của các khối từ đứng cạnh nhau, tương đối thích hợp với chuỗi ngắn nhưng dễ sụt giảm khi câu phản hồi quá dài.
     * **TF-IDF kết hợp Machine Learning truyền thống** đóng vai trò là một mô hình Baseline ổn định (**84.58%**). Ưu điểm tuyệt đối là tốc độ tính toán tính bằng mili-giây và tiêu tốn cực ít tài nguyên phần cứng, nhưng nhược điểm cốt lõi là phân tách từ độc lập, bỏ qua hoàn toàn trật tự sắp xếp từ ngữ cảnh trong câu.
     """)
