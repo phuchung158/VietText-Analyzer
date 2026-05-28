@@ -1,0 +1,47 @@
+{
+  "target": "sentiment",
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "max_words": 20000,
+  "max_length": 80,
+  "embedding_dim": 128,
+  "lstm_units": 128,
+  "dense_units": 64,
+  "epochs": 2,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "use_word2vec": true,
+  "word2vec_path": "models\\lstm_word2vec\\lstm_sentiment_word2vec.model",
+  "history": {
+    "loss": [
+      0.8312822580337524,
+      0.5594669580459595
+    ],
+    "accuracy": [
+      0.5947937369346619,
+      0.741895854473114
+    ],
+    "val_loss": [
+      0.562629222869873,
+      0.48626813292503357
+    ],
+    "val_accuracy": [
+      0.7480353713035583,
+      0.7946954965591431
+    ]
+  },
+  "metrics": {
+    "accuracy": 0.7946954813359528,
+    "precision": 0.7934097405583378,
+    "recall": 0.7946954813359528,
+    "f1": 0.7938998460201884,
+    "labels": [
+      "negative",
+      "neutral",
+      "positive"
+    ]
+  }
+}

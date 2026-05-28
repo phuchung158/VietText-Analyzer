@@ -1,0 +1,11 @@
+{
+  "target": "sentiment",
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "model_path": "models/phobert",
+  "source": "kaggle_download",
+  "note": "Generated locally to match the downloaded PhoBERT checkpoint layout."
+}

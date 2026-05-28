@@ -8,15 +8,6 @@ ENV/
 data/
 *.csv
 
-# Models
-models/
-*.safetensors
-*.pkl
-*.h5
-*.model
-*.bin
-*.pt
-
 # Python
 __pycache__/
 *.py[cod]
