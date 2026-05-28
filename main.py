@@ -19,25 +19,35 @@ LABEL_ENCODER_TFIDF = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
 # --- HÀM TẢI MÔ HÌNH TỐI ƯU (CACHE RESOURCE) ---
 @st.cache_resource
 def load_all_models():
-    # 1. Tải mô hình PhoBERT SOTA chạy thật từ thư mục của bạn
+    # 1. Tải mô hình PhoBERT SOTA
     phobert_model, phobert_tokenizer, phobert_le = None, None, None
-    if os.path.exists(MODEL_PHOBERT):
+    
+    # Kiểm tra chính xác file trọng số có tồn tại ở thư mục local hay không
+    TARGET_FILE = os.path.join(MODEL_PHOBERT, "model.safetensors")
+    
+    if os.path.exists(TARGET_FILE):
         try:
+            # Nếu có file cục bộ, nạp trực tiếp để tăng tốc
             phobert_model = AutoModelForSequenceClassification.from_pretrained(MODEL_PHOBERT)
             phobert_tokenizer = AutoTokenizer.from_pretrained(MODEL_PHOBERT)
         except Exception as e:
-            st.error(f"Lỗi cấu hình khi tải PhoBERT cục bộ: {str(e)}")
+            # Nếu file cục bộ bị lỗi phân tách hoặc lỗi git lfs, chuyển sang dự phòng
+            phobert_model = None
+            phobert_tokenizer = None
+            
+    # Cơ chế dự phòng (Fallback): Nếu không có file local hoặc file local bị lỗi, tải từ Internet
+    if phobert_model is None or phobert_tokenizer is None:
+        try:
+            phobert_model = AutoModelForSequenceClassification.from_pretrained("vinai/phobert-base", num_labels=3)
+            phobert_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+        except Exception as e:
+            st.error(f"Lỗi kết nối bộ tải Hugging Face: {str(e)}")
             
     # Tải bộ giải mã nhãn của PhoBERT
     if os.path.exists(LABEL_ENCODER_PHOBERT):
         with open(LABEL_ENCODER_PHOBERT, 'rb') as f:
             phobert_le = pickle.load(f)
             
-    # Fallback dự phòng nếu thư mục local gặp sự cố cấu hình mạng mây
-    if phobert_model is None or phobert_tokenizer is None:
-        phobert_model = AutoModelForSequenceClassification.from_pretrained("vinai/phobert-base", num_labels=3)
-        phobert_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
-    
     # 2. Tải mô hình TF-IDF + Machine Learning thực tế từ file .pkl của bạn
     tfidf_model, tfidf_le = None, None
     if os.path.exists(MODEL_TFIDF):
