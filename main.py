@@ -34,7 +34,7 @@ def load_all_models():
             phobert_le = pickle.load(f)
             
     # Fallback dự phòng nếu thư mục local gặp sự cố cấu hình mạng mây
-    if phobert_model None or phobert_tokenizer is None:
+    if phobert_model is None or phobert_tokenizer is None:
         phobert_model = AutoModelForSequenceClassification.from_pretrained("vinai/phobert-base", num_labels=3)
         phobert_tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
     
