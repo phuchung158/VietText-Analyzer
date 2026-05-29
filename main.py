@@ -23,14 +23,9 @@ st.set_page_config(page_title="VietText Analyzer Dashboard", page_icon="🚀", l
 MODEL_PHOBERT        = "./models/phobert"
 LABEL_ENCODER_PHOBERT = "./models/phobert/label_encoder.pkl"
 
-MODEL_TFIDF          = "./models/tfidf/baseline_sentiment_model.pkl"
-LABEL_ENCODER_TFIDF  = "./models/tfidf/baseline_sentiment_label_encoder.pkl"
+MODEL_TFIDF          = "./models/tfidf/sentiment/baseline_sentiment_model.pkl"
+LABEL_ENCODER_TFIDF  = "./models/tfidf/sentiment/baseline_sentiment_label_encoder.pkl"
 
-# LSTM PyTorch
-MODEL_LSTM_PATH      = "./models/lstm_word2vec/lstm_sentiment_model.pt"
-VOCAB_LSTM_PATH      = "./models/lstm_word2vec/lstm_sentiment_vocab.pkl"
-LABEL_ENCODER_LSTM_PATH = "./models/lstm_word2vec/lstm_sentiment_label_encoder.pkl"
-LSTM_CONFIG_PATH     = "./models/lstm_word2vec/lstm_config.pkl"   # dict: input_size, hidden_size, num_layers, num_classes, max_len
 
 DATASET_EXCEL = "./dataset/train.xlsx"
 VALID_PATH    = "./dataset/validation.xlsx"
