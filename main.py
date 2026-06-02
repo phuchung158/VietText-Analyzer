@@ -176,8 +176,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     st.divider()
 
     st.header("1. Giới thiệu đề tài")
-    st.write("""
-    Hệ thống giải quyết đồng thời **hai bài toán NLP**:
+    st.write("""Hệ thống giải quyết đồng thời **hai bài toán NLP**:)
 
     | Bài toán | Nhãn | Mô hình |
     |---|---|---|
