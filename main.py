@@ -243,7 +243,7 @@ elif page == "⚡ Trình dự đoán song song":
         if not user_input.strip():
             st.warning("⚠️ Vui lòng nhập nội dung trước khi bấm nút phân tích!")
         else:
-            processed = " ".join(preprocess_pipeline(user_input))
+            processed = preprocess_pipeline(user_input)
             with st.expander("🔍 Văn bản sau phân tách từ ghép (PyVi)"):
                 st.code(processed, language="text")
 
@@ -319,7 +319,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
 
         # Bước 1: Tiền xử lý
         status.text("⏳ Bước 1/4: Kích hoạt pipeline tiền xử lý và tách từ PyVi...")
-        cleaned = [" ".join(preprocess_pipeline(str(s))) for s in sentences]
+        cleaned = [preprocess_pipeline(str(s)) for s in sentences]
         progress.progress(10)
 
         # Bước 2: TF-IDF (cả 2 task cùng lúc)
