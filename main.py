@@ -460,7 +460,18 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             t_col4.metric("PhoBERT Topic F1-Score", "N/A")
 
         st.subheader("🧩 Biểu đồ ma trận toán học nhầm lẫn (Confusion Matrix)")
-        if y_pred_phobert_topic:
-            tc1, tc2 = st.columns(2)
-            with tc1:
-                st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic Matrix", cmap="Greens"))
+        
+        # Tạo layout cột để hiển thị trực quan
+        tc1, tc2 = st.columns(2)
+        
+        # 🟢 CỘT 1: LUÔN LUÔN HIỂN THỊ TF-IDF TOPIC
+        with tc1:
+            fig_tfidf = plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic Matrix", cmap="Greens")
+            st.pyplot(fig_tfidf)
+            
+        # 🔵 CỘT 2: CHỈ HIỂN THỊ PHOBERT TOPIC NẾU ĐÃ CÓ DỮ LIỆU DỰ ĐOÁN
+        with tc2:
+            if y_pred_phobert_topic:
+                fig_phobert = plot_cm(y_true_topic, y_pred_phobert_topic, TOPIC_LABELS, TOPIC_TICKS, "PhoBERT Topic Matrix", cmap="Greens")
+                st.pyplot(fig_phobert)
+
