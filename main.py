@@ -132,28 +132,31 @@ def tfidf_predict(texts, model, le):
     codes = model.predict(texts)
     return le.inverse_transform(codes)
 
-# --- BỔ SUNG: Hàm dự đoán kèm theo xác suất cho trang dự đoán Single (Real-time) ---
+# --- Dự đoán đơn kèm mảng xác suất chi tiết cho Trang 2 ---
 @torch.no_grad()
 def phobert_predict_single_with_prob(text, model, tokenizer, le):
     inputs = tokenizer([text], return_tensors="pt", truncation=True, padding=True, max_length=128)
     inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
     logits = model(**inputs).logits
-    probs  = torch.softmax(logits, dim=-1)
-    max_prob, id_tensor = torch.max(probs, dim=-1)
+    probs  = torch.softmax(logits, dim=-1).cpu().numpy()[0] # Mảng xác suất các lớp
     
-    label = le.inverse_transform(id_tensor.cpu().numpy())[0]
-    prob_val = max_prob.cpu().item()
-    return label, prob_val
+    max_idx = np.argmax(probs)
+    label = le.inverse_transform([max_idx])[0]
+    
+    # Tạo dict ánh xạ: tên nhãn gốc -> xác suất
+    prob_dict = {str(le.classes_[idx]): float(probs[idx]) for idx in range(len(le.classes_))}
+    return label, prob_dict
 
 def tfidf_predict_single_with_prob(text, model, le):
-    prob_matrix = model.predict_proba([text])
-    max_idx = np.argmax(prob_matrix, axis=-1)[0]
-    prob_val = prob_matrix[0][max_idx]
+    prob_matrix = model.predict_proba([text])[0]
+    max_idx = np.argmax(prob_matrix)
     label = le.inverse_transform([max_idx])[0]
-    return label, prob_val
+    
+    prob_dict = {str(le.classes_[idx]): float(prob_matrix[idx]) for idx in range(len(le.classes_))}
+    return label, prob_dict
 
 # ==============================================================================
-# CHUẨN HOÁ NHÃN SENTIMENT
+# CHUẨN HOÁ NHÃN SENTIMENT & HIỂN THỊ CHI TIẾT
 # ==============================================================================
 def standardize_sentiment(label_list):
     out = []
@@ -169,14 +172,43 @@ def standardize_sentiment(label_list):
             out.append(s)
     return out
 
-def label_to_display(label_text):
+def label_to_display_with_details(label_text, prob_dict):
+    """Hiển thị nhãn chiến thắng kèm bảng phân rã xác suất chi tiết Tiêu cực/Trung lập/Tích cực"""
     t = str(label_text).upper()
     if any(w in t for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
-        st.success("🎯 **SẮC THÁI:** TÍCH CỰC 😍")
+        st.success("🎯 **SẮC THÁI CHÍNH:** TÍCH CỰC 😍")
     elif any(w in t for w in ["NEG", "TIÊU CỰC", "0", "NEGATIVE"]):
-        st.error("🎯 **SẮC THÁI:** TIÊU CỰC 😡")
+        st.error("🎯 **SẮC THÁI CHÍNH:** TIÊU CỰC 😡")
     else:
-        st.warning("🎯 **SẮC THÁI:** TRUNG LẬP 😐")
+        st.warning("🎯 **SẮC THÁI CHÍNH:** TRUNG LẬP 😐")
+        
+    # Chuẩn hóa key của prob_dict về dạng hiển thị thân thiện
+    display_probs = {"Tiêu cực 😡": 0.0, "Trung lập 😐": 0.0, "Tích cực 😍": 0.0}
+    for k, v in prob_dict.items():
+        sk = str(k).strip().lower()
+        if any(x in sk for x in ["tiêu cực", "neg", "negative"]) or sk in ["0", "0.0"]:
+            display_probs["Tiêu cực 😡"] = v
+        elif any(x in sk for x in ["trung lập", "neu", "neutral"]) or sk in ["1", "1.0"]:
+            display_probs["Trung lập 😐"] = v
+        elif any(x in sk for x in ["tích cực", "pos", "positive"]) or sk in ["2", "2.0"]:
+            display_probs["Tích cực 😍"] = v
+        else:
+            display_probs[k] = v
+
+    # Hiển thị thanh tiến trình xác suất trực quan
+    st.markdown("**📊 Phân bổ xác suất chi tiết:**")
+    for name, score in display_probs.items():
+        st.write(f"{name}: **{score * 100:.2f}%**")
+        st.progress(int(score * 100))
+
+def topic_to_display_with_details(label_text, prob_dict):
+    """Hiển thị nhãn chủ đề kèm bảng phân rã xác suất chi tiết cho từng Topic"""
+    st.info(f"📌 **CHỦ ĐỀ CHÍNH:** {topic_vi(label_text)}")
+    
+    st.markdown("**📊 Phân bổ xác suất chi tiết:**")
+    for k, v in prob_dict.items():
+        st.write(f"• {topic_vi(k)}: **{v * 100:.2f}%**")
+        st.progress(int(v * 100))
 
 # ==============================================================================
 # SideBar Điều hướng nâng cao
@@ -248,7 +280,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
             st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
 
 # ==============================================================================
-# TRANG 2: REAL-TIME INFERENCE DỰ ĐOÁN SONG SONG (CÓ ĐỘ TIN CẬY / XÁC SUẤT)
+# TRANG 2: REAL-TIME INFERENCE DỰ ĐOÁN SONG SONG (XÁC SUẤT ĐẦY ĐỦ CÁC LỚP)
 # ==============================================================================
 elif page == "⚡ Trình dự đoán song song":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
@@ -276,9 +308,8 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label, prob = tfidf_predict_single_with_prob(processed, tfidf_sent_m, tfidf_sent_le)
-                    label_to_display(label)
-                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
+                    label, prob_dict = tfidf_predict_single_with_prob(processed, tfidf_sent_m, tfidf_sent_le)
+                    label_to_display_with_details(label, prob_dict)
                 except Exception as e:
                     st.error(f"Lỗi TF-IDF Sentiment: {e}")
 
@@ -286,9 +317,8 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#e8f0fe;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: PhoBERT Transformer (SOTA)</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label, prob = phobert_predict_single_with_prob(processed, phobert_sent_m, phobert_sent_t, phobert_sent_le)
-                    label_to_display(label)
-                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
+                    label, prob_dict = phobert_predict_single_with_prob(processed, phobert_sent_m, phobert_sent_t, phobert_sent_le)
+                    label_to_display_with_details(label, prob_dict)
                 except Exception as e:
                     st.error(f"Lỗi PhoBERT Sentiment: {e}")
 
@@ -302,9 +332,8 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label, prob = tfidf_predict_single_with_prob(processed, tfidf_topic_m, tfidf_topic_le)
-                    st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
-                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
+                    label, prob_dict = tfidf_predict_single_with_prob(processed, tfidf_topic_m, tfidf_topic_le)
+                    topic_to_display_with_details(label, prob_dict)
                 except Exception as e:
                     st.error(f"Lỗi TF-IDF Topic: {e}")
 
@@ -313,9 +342,8 @@ elif page == "⚡ Trình dự đoán song song":
                 st.write("")
                 if has_phobert_topic:
                     try:
-                        label, prob = phobert_predict_single_with_prob(processed, phobert_topic_m, phobert_topic_t, phobert_topic_le)
-                        st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
-                        st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
+                        label, prob_dict = phobert_predict_single_with_prob(processed, phobert_topic_m, phobert_topic_t, phobert_topic_le)
+                        topic_to_display_with_details(label, prob_dict)
                     except Exception as e:
                         st.error(f"Lỗi PhoBERT Topic: {e}")
                 else:
@@ -405,7 +433,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         y_pred_tfidf_topic   = std_topic(y_pred_tfidf_topic_raw)
         y_pred_phobert_topic = std_topic(y_pred_phobert_topic_raw) if y_pred_phobert_topic_raw else []
 
-        # ── Hàm vẽ confusion matrix đồ họa cao ───────────────────────────────
+        # ── Hàm vẽ confusion matrix ───────────────────────────────────────────
         def plot_cm(y_t, y_p, labels, tick_names, title, cmap="Blues"):
             cm  = confusion_matrix(y_t, y_p, labels=labels)
             fig, ax = plt.subplots(figsize=(5, 4))
@@ -421,7 +449,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             return fig
 
         # ══════════════════════════════════════════════════════════════════════
-        # PHẦN A: SENTIMENT (BỐ TRÍ DẠNG CARD METRICS)
+        # PHẦN A: SENTIMENT
         # ══════════════════════════════════════════════════════════════════════
         st.markdown("<br><hr>", unsafe_allow_html=True)
         st.header("🔵 A. Phân tích Sắc thái (Sentiment Analysis)")
@@ -432,7 +460,6 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         acc_ph_s = accuracy_score(y_true_sent, y_pred_phobert_sent) * 100
         f1_ph_s  = f1_score(y_true_sent, y_pred_phobert_sent, average="weighted") * 100
 
-        # Hiển thị số liệu trực quan dạng khối lớn
         st.subheader("📈 Chỉ số hiệu năng thực nghiệm")
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         m_col1.metric("TF-IDF Accuracy", f"{acc_tf_s:.2f}%")
@@ -450,7 +477,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             st.pyplot(plot_cm(y_true_sent, y_pred_phobert_sent, SENT_LABELS, SENT_TICKS, "PhoBERT Sentiment Matrix", cmap="Blues"))
 
         # ══════════════════════════════════════════════════════════════════════
-        # PHẦN B: TOPIC (HIỂN THỊ CHUẨN CHỮ ĐẦY ĐỦ KHÔNG BỊ CẮT XÉN)
+        # PHẦN B: TOPIC
         # ══════════════════════════════════════════════════════════════════════
         st.markdown("<br><hr>", unsafe_allow_html=True)
         st.header("🟢 B. Phân loại Chủ đề (Topic Classification)")
@@ -485,16 +512,10 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             t_col4.metric("PhoBERT Topic F1-Score", "N/A")
 
         st.subheader("🧩 Biểu đồ ma trận toán học nhầm lẫn (Confusion Matrix)")
-        
-        # Tạo layout cột để hiển thị trực quan
         tc1, tc2 = st.columns(2)
-        
-        # 🟢 CỘT 1: LUÔN LUÔN HIỂN THỊ TF-IDF TOPIC
         with tc1:
             fig_tfidf = plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic Matrix", cmap="Greens")
             st.pyplot(fig_tfidf)
-            
-        # 🔵 CỘT 2: CHỈ HIỂN THỊ PHOBERT TOPIC NẾU ĐÃ CÓ DỮ LIỆU DỰ ĐOÁN
         with tc2:
             if y_pred_phobert_topic:
                 fig_phobert = plot_cm(y_true_topic, y_pred_phobert_topic, TOPIC_LABELS, TOPIC_TICKS, "PhoBERT Topic Matrix", cmap="Greens")
