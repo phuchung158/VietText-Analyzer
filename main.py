@@ -50,7 +50,7 @@ def _require_file(path: str, label: str):
         st.stop()
 
 # ==============================================================================
-# TẢI MÔ HÌNH VÀO CACHE RESOURSE
+# TẢI MÔ HÌNH VÀO CACHE RESOURCE
 # ==============================================================================
 @st.cache_resource
 def load_all_models():
@@ -151,21 +151,28 @@ def standardize_sentiment(label_list):
 def label_to_display(label_text):
     t = str(label_text).upper()
     if any(w in t for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
-        st.success("🎯 TÍCH CỰC 😍")
+        st.success("🎯 **SẮC THÁI:** TÍCH CỰC 😍")
     elif any(w in t for w in ["NEG", "TIÊU CỰC", "0", "NEGATIVE"]):
-        st.error("🎯 TIÊU CỰC 😡")
+        st.error("🎯 **SẮC THÁI:** TIÊU CỰC 😡")
     else:
-        st.warning("🎯 TRUNG LẬP 😐")
+        st.warning("🎯 **SẮC THÁI:** TRUNG LẬP 😐")
 
 # ==============================================================================
-# SideBar Điều hướng
+# SideBar Điều hướng nâng cao
 # ==============================================================================
-st.sidebar.title("🎮 Hệ Thống Điều Khiển")
-page = st.sidebar.radio("Danh mục trang:", [
-    "🏠 Giới thiệu dự án & Dataset",
-    "⚡ Trình dự đoán ",
-    "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn",
-])
+with st.sidebar:
+    st.title("🎮 Hệ Thống Điều Khiển")
+    st.markdown("---")
+    page = st.radio(
+        "Danh mục trang hệ thống:", 
+        [
+            "🏠 Giới thiệu dự án & Dataset",
+            "⚡ Trình dự đoán song song",
+            "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn",
+        ]
+    )
+    st.markdown("---")
+    st.caption("🔥 Powered by PhoBERT-base & Streamlit")
 
 # ==============================================================================
 # TRANG 1: GIỚI THIỆU & THỐNG KÊ DATASET
@@ -176,30 +183,34 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     st.divider()
 
     st.header("1. Giới thiệu đề tài")
-    # Kiểm tra xem dòng cuối cùng của đoạn text đã có đủ 3 dấu nháy kép chưa
     st.write("""
-    Hệ thống giải quyết đồng thời **hai bài toán NLP**:
-    1. Phân tích cảm xúc (Sentiment Analysis).
-    2. Phân loại chủ đề (Topic Classification).
+    Hệ thống giải quyết đồng thời **hai bài toán NLP cốt lõi** trên khối văn bản ngôn ngữ tự nhiên:
+    1. **Phân tích cảm xúc (Sentiment Analysis):** Nhận diện trạng thái tâm lý ý kiến sinh viên.
+    2. **Phân loại chủ đề (Topic Classification):** Tự động bóc tách phân loại nhóm nội dung phản hồi.
     """) 
-    | Bài toán | Nhãn | Mô hình |
+    
+    st.markdown("""
+    | Bài toán (Task) | Nhãn phân loại (Labels) | Tiếp cận công nghệ |
     |---|---|---|
-    | Phân tích sắc thái (Sentiment) | Tiêu cực / Trung lập / Tích cực | TF-IDF + ML, PhoBERT |
-    | Phân loại chủ đề (Topic) | Curriculum / Facility / Lecturer / Other | TF-IDF + ML       |
+    | **Phân tích sắc thái (Sentiment)** | Tiêu cực / Trung lập / Tích cực | TF-IDF + Linear ML, PhoBERT Transformer |
+    | **Phân loại chủ đề (Topic)** | Curriculum / Facility / Lecturer / Other | TF-IDF + Linear ML |
+    """)
+    st.divider()
+
     st.header("2. Khám phá Bộ dữ liệu")
     @st.cache_data
     def load_dataset():
         _require_file(DATASET_EXCEL, "Dataset train.xlsx")
         df = pd.read_excel(DATASET_EXCEL)
-        sent_map  = {0: "Tiêu cực", 1: "Trung lập", 2: "Tích cực"}
+        sent_map  = {0: "Tiêu cực 😡", 1: "Trung lập 😐", 2: "Tích cực 😍"}
         if len(df.columns) >= 1: df["sentence"]        = df.iloc[:, 0]
         if len(df.columns) >= 2: df["sentiment_label"] = df.iloc[:, 1].map(sent_map).fillna(df.iloc[:, 1])
-        if len(df.columns) >= 3: df["topic_label"]     = df.iloc[:, 2]
+        if len(df.columns) >= 3: df["topic_label"]     = df.iloc[:, 2].apply(topic_vi)
         df = df[df["sentence"].astype(str).str.lower() != "sentence"]
         return df
 
     df = load_dataset()
-    st.subheader("📑 100 dòng dữ liệu đầu tiên")
+    st.subheader("📑 100 dòng dữ liệu đầu tiên (Xem trước cấu trúc)")
     display_cols = [c for c in ["sentence", "sentiment_label", "topic_label"] if c in df.columns]
     st.dataframe(df[display_cols].head(100), use_container_width=True)
     st.divider()
@@ -207,11 +218,11 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     st.header("3. Thống kê phân bố dữ liệu")
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📊 Phân bố Sắc thái")
+        st.subheader("📊 Phân bố Sắc thái (Sentiment Distribution)")
         if "sentiment_label" in df.columns:
             st.bar_chart(df["sentiment_label"].value_counts(), color="#ff4b4b")
     with col2:
-        st.subheader("📊 Phân bố Chủ đề")
+        st.subheader("📊 Phân bố Chủ đề (Topic Distribution)")
         if "topic_label" in df.columns:
             st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
 
@@ -220,28 +231,29 @@ if page == "🏠 Giới thiệu dự án & Dataset":
 # ==============================================================================
 elif page == "⚡ Trình dự đoán song song":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
-    st.markdown("Nhập câu đánh giá — hệ thống phân tích sắc thái và chủ đề song song.")
+    st.markdown("Nhập câu đánh giá học thuật — hệ thống phân tích sắc thái và chủ đề song song thời gian thực.")
 
     user_input = st.text_area(
         "✍️ Nhập nội dung ý kiến cần phân tích:",
-        placeholder="Ví dụ: Thầy cô dạy rất hay, cơ sở vật chất tốt...",
-        height=100
+        placeholder="Ví dụ: Thầy cô dạy rất nhiệt tình và dễ hiểu cơ mà phòng học hơi nóng...",
+        height=120
     )
 
     if st.button("Kích hoạt phân tích 🚀", type="primary"):
         if not user_input.strip():
-            st.warning("⚠️ Vui lòng nhập nội dung trước khi phân tích!")
+            st.warning("⚠️ Vui lòng nhập nội dung trước khi bấm nút phân tích!")
         else:
             processed = " ".join(preprocess_pipeline(user_input))
-            with st.expander("🔍 Văn bản sau tiền xử lý (PyVi)"):
+            with st.expander("🔍 Văn bản sau phân tách từ ghép (PyVi)"):
                 st.code(processed, language="text")
 
             # ── Sentiment ──────────────────────────────────────────────────────
-            st.subheader("📍 1. Phân tích Sắc thái (Sentiment)")
+            st.subheader("📍 1. Kết quả phân tích Sắc thái (Sentiment)")
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown("### 🔹 TF-IDF + ML")
+                st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
+                st.write("")
                 try:
                     label = tfidf_predict([processed], tfidf_sent_m, tfidf_sent_le)[0]
                     label_to_display(label)
@@ -249,7 +261,8 @@ elif page == "⚡ Trình dự đoán song song":
                     st.error(f"Lỗi TF-IDF Sentiment: {e}")
 
             with col2:
-                st.markdown("### 🔹 PhoBERT (SOTA)")
+                st.markdown("<div style='background-color:#e8f0fe;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: PhoBERT Transformer (SOTA)</b></div>", unsafe_allow_html=True)
+                st.write("")
                 try:
                     label = phobert_predict_batch([processed], phobert_sent_m, phobert_sent_t, phobert_sent_le)[0]
                     label_to_display(label)
@@ -258,28 +271,30 @@ elif page == "⚡ Trình dự đoán song song":
 
             # ── Topic ──────────────────────────────────────────────────────────
             st.markdown("---")
-            st.subheader("🎯 2. Phân loại Chủ đề (Topic)")
+            st.subheader("🎯 2. Kết quả phân loại Chủ đề (Topic)")
             has_phobert_topic = phobert_topic_m is not None
             col_t1, col_t2 = st.columns(2)
 
             with col_t1:
-                st.markdown("### 🔹 TF-IDF + ML")
+                st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
+                st.write("")
                 try:
                     label = tfidf_predict([processed], tfidf_topic_m, tfidf_topic_le)[0]
-                    st.info(f"📌 {topic_vi(label)}")
+                    st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
                 except Exception as e:
                     st.error(f"Lỗi TF-IDF Topic: {e}")
 
             with col_t2:
-                st.markdown("### 🔹 PhoBERT Topic")
+                st.markdown("<div style='background-color:#e8f0fe;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: PhoBERT Topic</b></div>", unsafe_allow_html=True)
+                st.write("")
                 if has_phobert_topic:
                     try:
                         label = phobert_predict_batch([processed], phobert_topic_m, phobert_topic_t, phobert_topic_le)[0]
-                        st.info(f"📌 {topic_vi(label)}")
+                        st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
                     except Exception as e:
                         st.error(f"Lỗi PhoBERT Topic: {e}")
                 else:
-                    st.info("⏳ Đang train trên Kaggle — sẽ tự động hiển thị khi hoàn tất cập nhật model.")
+                    st.info("⏳ Mô hình PhoBERT riêng cho Topic chưa nạp — Sử dụng song song Baseline TF-IDF.")
 
 # ==============================================================================
 # TRANG 3: ĐÁNH GIÁ TOÀN BỘ TẬP VALIDATION
@@ -291,7 +306,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
     df_val     = pd.read_excel(VALID_PATH)
     df_val     = df_val[df_val.iloc[:, 0].astype(str).str.lower() != "sentence"].reset_index(drop=True)
     total_rows = len(df_val)
-    st.info(f"📋 Tập kiểm thử: **{total_rows}** mẫu — 2 bài toán: Sentiment & Topic")
+    st.info(f"📋 Tìm thấy tệp kiểm thử hợp lệ: **{total_rows}** mẫu dữ liệu thực tế.")
 
     sentences        = df_val.iloc[:, 0].values
     y_true_sent_raw  = df_val.iloc[:, 1].values
@@ -303,17 +318,17 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         t0       = time.time()
 
         # Bước 1: Tiền xử lý
-        status.text("⏳ Bước 1/4: Tiền xử lý văn bản...")
+        status.text("⏳ Bước 1/4: Kích hoạt pipeline tiền xử lý và tách từ PyVi...")
         cleaned = [" ".join(preprocess_pipeline(str(s))) for s in sentences]
         progress.progress(10)
 
         # Bước 2: TF-IDF (cả 2 task cùng lúc)
-        status.text("⏳ Bước 2/4: TF-IDF Sentiment & Topic đang suy luận...")
+        status.text("⏳ Bước 2/4: Mô hình toán học TF-IDF đang tính toán toán tử nền...")
         try:
             y_pred_tfidf_sent_raw  = tfidf_predict(cleaned, tfidf_sent_m,  tfidf_sent_le)
             y_pred_tfidf_topic_raw = tfidf_predict(cleaned, tfidf_topic_m, tfidf_topic_le)
         except Exception as e:
-            st.error(f"❌ Lỗi TF-IDF: {e}")
+            st.error(f"❌ Lỗi xử lý khối TF-IDF: {e}")
             st.stop()
         progress.progress(35)
 
@@ -323,13 +338,13 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         y_pred_phobert_sent_raw = []
         for i in range(0, len(cleaned), PHOBERT_BATCH):
             b = i // PHOBERT_BATCH + 1
-            status.text(f"⏳ Bước 3/4: PhoBERT Sentiment — batch {b}/{total_batches}...")
+            status.text(f"⏳ Bước 3/4: PhoBERT Deep Learning — Xử lý Tensor Batch {b}/{total_batches}...")
             try:
                 y_pred_phobert_sent_raw.extend(
                     phobert_predict_batch(cleaned[i:i+PHOBERT_BATCH], phobert_sent_m, phobert_sent_t, phobert_sent_le)
                 )
             except Exception as e:
-                st.error(f"❌ Lỗi PhoBERT Sentiment batch {b}: {e}")
+                st.error(f"❌ Lỗi PhoBERT Sentiment ở khối Tensor {b}: {e}")
                 st.stop()
             progress.progress(35 + int((i / len(cleaned)) * 40))
         progress.progress(75)
@@ -339,20 +354,20 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         if phobert_topic_m is not None:
             for i in range(0, len(cleaned), PHOBERT_BATCH):
                 b = i // PHOBERT_BATCH + 1
-                status.text(f"⏳ Bước 4/4: PhoBERT Topic — batch {b}/{total_batches}...")
+                status.text(f"⏳ Bước 4/4: PhoBERT Topic Deep Learning — Batch {b}/{total_batches}...")
                 try:
                     y_pred_phobert_topic_raw.extend(
                         phobert_predict_batch(cleaned[i:i+PHOBERT_BATCH], phobert_topic_m, phobert_topic_t, phobert_topic_le)
                     )
                 except Exception as e:
-                    st.error(f"❌ Lỗi PhoBERT Topic batch {b}: {e}")
+                    st.error(f"❌ Lỗi PhoBERT Topic ở khối Tensor {b}: {e}")
                     st.stop()
                 progress.progress(75 + int((i / len(cleaned)) * 24))
         else:
-            status.text("⏳ Bước 4/4: PhoBERT Topic chưa sẵn sàng — bỏ qua...")
+            status.text("⏳ Bước 4/4: Không phát hiện file PhoBERT Topic — Tự động dùng chế độ bỏ qua...")
 
         progress.progress(100)
-        status.success(f"🎉 Hoàn thành trong {time.time() - t0:.2f} giây!")
+        status.success(f"🎉 Hệ thống tính toán hoàn tất trong thời gian kỷ lục: {time.time() - t0:.2f} giây!")
 
         # ── Chuẩn hoá nhãn sentiment ──────────────────────────────────────────
         y_true_sent         = standardize_sentiment(y_true_sent_raw)
@@ -365,92 +380,87 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         y_pred_tfidf_topic   = std_topic(y_pred_tfidf_topic_raw)
         y_pred_phobert_topic = std_topic(y_pred_phobert_topic_raw) if y_pred_phobert_topic_raw else []
 
-        # ── Hàm vẽ confusion matrix ───────────────────────────────────────────
+        # ── Hàm vẽ confusion matrix đồ họa cao ───────────────────────────────
         def plot_cm(y_t, y_p, labels, tick_names, title, cmap="Blues"):
             cm  = confusion_matrix(y_t, y_p, labels=labels)
-            fig, ax = plt.subplots(figsize=(4.5, 3.5))
-            sns.heatmap(cm, annot=True, fmt="d", cmap=cmap, ax=ax, xticklabels=tick_names, yticklabels=tick_names)
-            ax.set_xlabel("Predicted", fontsize=8)
-            ax.set_ylabel("True", fontsize=8)
-            ax.set_title(title, fontsize=9, fontweight="bold")
+            fig, ax = plt.subplots(figsize=(5, 4))
+            sns.heatmap(cm, annot=True, fmt="d", cmap=cmap, ax=ax, 
+                        xticklabels=tick_names, yticklabels=tick_names,
+                        cbar=True, annot_kws={"size": 11, "weight": "bold"})
+            ax.set_xlabel("Predicted Label", fontsize=10, labelpad=8)
+            ax.set_ylabel("True Label", fontsize=10, labelpad=8)
+            ax.set_title(title, fontsize=11, fontweight="bold", pad=12)
+            plt.xticks(rotation=35, ha='right')
+            plt.yticks(rotation=0)
             plt.tight_layout()
             return fig
 
         # ══════════════════════════════════════════════════════════════════════
-        # PHẦN A: SENTIMENT
+        # PHẦN A: SENTIMENT (BỐ TRÍ DẠNG CARD METRICS)
         # ══════════════════════════════════════════════════════════════════════
-        st.markdown("---")
+        st.markdown("<br><hr>", unsafe_allow_html=True)
         st.header("🔵 A. Phân tích Sắc thái (Sentiment Analysis)")
 
-        sent_results = []
-        for name, yp in [
-            ("TF-IDF + ML",             y_pred_tfidf_sent),
-            ("PhoBERT Transformer (SOTA)", y_pred_phobert_sent),
-        ]:
-            acc = accuracy_score(y_true_sent, yp) * 100
-            f1  = f1_score(y_true_sent, yp, average="weighted") * 100
-            sent_results.append({
-                "Mô hình": name,
-                "Accuracy (%)": f"{acc:.2f}",
-                "F1-Score Weighted (%)": f"{f1:.2f}",
-            })
-        st.subheader("📈 Chỉ số hiệu năng — Sentiment")
-        st.table(pd.DataFrame(sent_results))
+        acc_tf_s = accuracy_score(y_true_sent, y_pred_tfidf_sent) * 100
+        f1_tf_s  = f1_score(y_true_sent, y_pred_tfidf_sent, average="weighted") * 100
+        
+        acc_ph_s = accuracy_score(y_true_sent, y_pred_phobert_sent) * 100
+        f1_ph_s  = f1_score(y_true_sent, y_pred_phobert_sent, average="weighted") * 100
 
-        st.subheader("🧩 Ma trận nhầm lẫn — Sentiment")
+        # Hiển thị số liệu trực quan dạng khối lớn
+        st.subheader("📈 Chỉ số hiệu năng thực nghiệm")
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        m_col1.metric("TF-IDF Accuracy", f"{acc_tf_s:.2f}%")
+        m_col2.metric("TF-IDF F1-Score", f"{f1_tf_s:.2f}%")
+        m_col3.metric("PhoBERT Accuracy 🔥", f"{acc_ph_s:.2f}%", f"+{(acc_ph_s - acc_tf_s):.2f}%")
+        m_col4.metric("PhoBERT F1-Score 🔥", f"{f1_ph_s:.2f}%", f"+{(f1_ph_s - f1_tf_s):.2f}%")
+
+        st.subheader("🧩 Biểu đồ ma trận toán học nhầm lẫn (Confusion Matrix)")
         SENT_LABELS = ["0", "1", "2"]
-        SENT_TICKS  = ["Negative", "Neutral", "Positive"]
+        SENT_TICKS  = ["Tiêu cực (Neg)", "Trung lập (Neu)", "Tích cực (Pos)"]
         sc1, sc2 = st.columns(2)
         with sc1:
-            st.pyplot(plot_cm(y_true_sent, y_pred_tfidf_sent, SENT_LABELS, SENT_TICKS, "TF-IDF Sentiment", cmap="Blues"))
+            st.pyplot(plot_cm(y_true_sent, y_pred_tfidf_sent, SENT_LABELS, SENT_TICKS, "TF-IDF Sentiment Matrix", cmap="Blues"))
         with sc2:
-            st.pyplot(plot_cm(y_true_sent, y_pred_phobert_sent, SENT_LABELS, SENT_TICKS, "PhoBERT Sentiment", cmap="Blues"))
+            st.pyplot(plot_cm(y_true_sent, y_pred_phobert_sent, SENT_LABELS, SENT_TICKS, "PhoBERT Sentiment Matrix", cmap="Blues"))
 
         # ══════════════════════════════════════════════════════════════════════
-        # PHẦN B: TOPIC
+        # PHẦN B: TOPIC (HIỂN THỊ CHUẨN CHỮ ĐẦY ĐỦ KHÔNG BỊ CẮT XÉN)
         # ══════════════════════════════════════════════════════════════════════
-        st.markdown("---")
+        st.markdown("<br><hr>", unsafe_allow_html=True)
         st.header("🟢 B. Phân loại Chủ đề (Topic Classification)")
 
         TOPIC_LABELS = sorted(set(y_true_topic))
-        TOPIC_LABELS = sorted(set(y_true_topic))
-        # 👇 ĐÃ SỬA: Lấy từ 2 từ đầu hoặc viết gọn lại để vừa khít biểu đồ 👇
         TOPIC_TICKS  = []
         for l in TOPIC_LABELS:
             ten_vi = topic_vi(l)
             if "chương trình" in ten_vi.lower():
-                TOPIC_TICKS.append("Chương trình")
+                TOPIC_TICKS.append("Giáo trình")
             elif "cơ sở" in ten_vi.lower():
                 TOPIC_TICKS.append("Cơ sở VC")
             elif "giảng viên" in ten_vi.lower() or "giảng dạy" in ten_vi.lower():
                 TOPIC_TICKS.append("Giảng viên")
             else:
-                TOPIC_TICKS.append("Khác")
+                TOPIC_TICKS.append("Chủ đề khác")
 
-        topic_results = [{
-            "Mô hình": "TF-IDF + ML (Topic)",
-            "Accuracy (%)": f"{accuracy_score(y_true_topic, y_pred_tfidf_topic)*100:.2f}",
-            "F1-Score Weighted (%)": f"{f1_score(y_true_topic, y_pred_tfidf_topic, average='weighted')*100:.2f}"
-        }]
+        acc_tf_t = accuracy_score(y_true_topic, y_pred_tfidf_topic) * 100
+        f1_tf_t  = f1_score(y_true_topic, y_pred_tfidf_topic, average='weighted') * 100
 
+        t_col1, t_col2, t_col3, t_col4 = st.columns(4)
+        t_col1.metric("TF-IDF Topic Accuracy", f"{acc_tf_t:.2f}%")
+        t_col2.metric("TF-IDF Topic F1-Score", f"{f1_tf_t:.2f}%")
+        
         if y_pred_phobert_topic:
-            topic_results.append({
-                "Mô hình": "PhoBERT Topic",
-                "Accuracy (%)": f"{accuracy_score(y_true_topic, y_pred_phobert_topic)*100:.2f}",
-                "F1-Score Weighted (%)": f"{f1_score(y_true_topic, y_pred_phobert_topic, average='weighted')*100:.2f}",
-            })
+            acc_ph_t = accuracy_score(y_true_topic, y_pred_phobert_topic) * 100
+            f1_ph_t  = f1_score(y_true_topic, y_pred_phobert_topic, average='weighted') * 100
+            t_col3.metric("PhoBERT Topic Accuracy", f"{acc_ph_t:.2f}%")
+            t_col4.metric("PhoBERT Topic F1-Score", f"{f1_ph_t:.2f}%")
         else:
-            st.caption("⏳ PhoBERT Topic chưa sẵn sàng — chỉ hiển thị thông số đánh giá thực nghiệm của TF-IDF.")
+            t_col3.metric("PhoBERT Topic Accuracy", "N/A")
+            t_col4.metric("PhoBERT Topic F1-Score", "N/A")
 
-        st.subheader("📈 Chỉ số hiệu năng — Topic")
-        st.table(pd.DataFrame(topic_results))
-
-        st.subheader("🧩 Ma trận nhầm lẫn — Topic")
+        st.subheader("🧩 Biểu đồ ma trận toán học nhầm lẫn (Confusion Matrix)")
         if y_pred_phobert_topic:
             tc1, tc2 = st.columns(2)
             with tc1:
-                st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic", cmap="Greens"))
-            with tc2:
-                st.pyplot(plot_cm(y_true_topic, y_pred_phobert_topic, TOPIC_LABELS, TOPIC_TICKS, "PhoBERT Topic", cmap="Greens"))
-        else:
-            st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic", cmap="Greens"))
+                st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOP
