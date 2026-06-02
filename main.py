@@ -163,7 +163,7 @@ def label_to_display(label_text):
 st.sidebar.title("🎮 Hệ Thống Điều Khiển")
 page = st.sidebar.radio("Danh mục trang:", [
     "🏠 Giới thiệu dự án & Dataset",
-    "⚡ Trình dự đoán song song",
+    "⚡ Trình dự đoán ",
     "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn",
 ])
 
@@ -183,12 +183,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     |---|---|---|
     | Phân tích sắc thái (Sentiment) | Tiêu cực / Trung lập / Tích cực | TF-IDF + ML, PhoBERT |
     | Phân loại chủ đề (Topic) | Curriculum / Facility / Lecturer / Other | TF-IDF + ML       |
-
-    *\*PhoBERT Topic đang được huấn luyện (nếu hệ thống phát hiện cấu trúc thư mục weights sẽ tự động kích hoạt).*
-    """)
-
     st.header("2. Khám phá Bộ dữ liệu")
-
     @st.cache_data
     def load_dataset():
         _require_file(DATASET_EXCEL, "Dataset train.xlsx")
