@@ -182,7 +182,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     | Bài toán | Nhãn | Mô hình |
     |---|---|---|
     | Phân tích sắc thái (Sentiment) | Tiêu cực / Trung lập / Tích cực | TF-IDF + ML, PhoBERT |
-    | Phân loại chủ đề (Topic) | Curriculum / Facility / Lecturer / Other | TF-IDF + ML, PhoBERT* |
+    | Phân loại chủ đề (Topic) | Curriculum / Facility / Lecturer / Other | TF-IDF + ML       |
 
     *\*PhoBERT Topic đang được huấn luyện (nếu hệ thống phát hiện cấu trúc thư mục weights sẽ tự động kích hoạt).*
     """)
@@ -415,7 +415,19 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         st.header("🟢 B. Phân loại Chủ đề (Topic Classification)")
 
         TOPIC_LABELS = sorted(set(y_true_topic))
-        TOPIC_TICKS  = [topic_vi(l).split(" ")[0] for l in TOPIC_LABELS]
+        TOPIC_LABELS = sorted(set(y_true_topic))
+        # 👇 ĐÃ SỬA: Lấy từ 2 từ đầu hoặc viết gọn lại để vừa khít biểu đồ 👇
+        TOPIC_TICKS  = []
+        for l in TOPIC_LABELS:
+            ten_vi = topic_vi(l)
+             if "chương trình" in ten_vi.lower():
+                TOPIC_TICKS.append("Chương trình")
+            elif "cơ sở" in ten_vi.lower():
+                TOPIC_TICKS.append("Cơ sở VC")
+            elif "giảng viên" in ten_vi.lower() or "giảng dạy" in ten_vi.lower():
+                TOPIC_TICKS.append("Giảng viên")
+            else:
+                TOPIC_TICKS.append("Khác")
 
         topic_results = [{
             "Mô hình": "TF-IDF + ML (Topic)",
