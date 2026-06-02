@@ -1,9 +1,7 @@
 # Vietnamese Sentiment Analysis
 
 Dự án xây dựng hệ thống phân tích cảm xúc tiếng Việt trên bộ dữ liệu phản hồi sinh viên tổng hợp (**Synthetic Vietnamese Students Feedback Corpus**) bằng 3 hướng tiếp cận:
-
 * Machine Learning truyền thống (TF-IDF + Linear Models)
-* Deep Learning (LSTM + Word2Vec)
 * Transformer hiện đại (PhoBERT)
 
 ---
@@ -26,7 +24,7 @@ Mỗi file CSV bao gồm:
 | ----------- | ------------------------------------------------ |
 | `sentence`  | Văn bản phản hồi của sinh viên                   |
 | `sentiment` | Nhãn cảm xúc (`negative`, `neutral`, `positive`) |
-
+| `topic    ` |                                                  |
 ---
 
 # 1️⃣ Baseline Model — TF-IDF + Machine Learning
@@ -51,7 +49,7 @@ Mô hình truyền thống sử dụng phương pháp thống kê tần suất t
 
 | Metric   | Score      |
 | -------- | ---------- |
-| Accuracy | **84.58%** |
+| Accuracy | **78.59 ** |
 
 ### ✅ Ưu điểm
 
@@ -64,47 +62,6 @@ Mô hình truyền thống sử dụng phương pháp thống kê tần suất t
 * Không hiểu ngữ cảnh
 * Không xử lý tốt từ đồng nghĩa
 * Không nắm được ngữ nghĩa tiếng Việt
-
-## 🚀 Train model
-
-```bash
-python baseline/train_tfidf.py
-```
-
----
-
-# 2️⃣ Deep Learning Model — LSTM + Word2Vec
-
-Mô hình mạng học sâu kết hợp xử lý chuỗi và nhúng từ.
-
-## ⚙️ Cơ chế hoạt động
-
-* Sử dụng **Pre-trained Word2Vec tiếng Việt**
-* Biến từ thành các vector embedding có ý nghĩa ngữ nghĩa
-* Chuỗi vector được đưa qua:
-
-  * `LSTM (Long Short-Term Memory)`
-
-LSTM giúp mô hình học:
-
-* quan hệ phụ thuộc xa
-* ngữ cảnh câu
-* cấu trúc chuỗi văn bản
-
-## 📈 Đánh giá
-
-Mô hình hiểu ngữ cảnh tốt hơn TF-IDF nhưng:
-
-### ✅ Ưu điểm
-
-* Hiểu chuỗi văn bản tốt hơn
-* Học được ngữ nghĩa từ
-
-### ❌ Nhược điểm
-
-* Huấn luyện lâu hơn
-* Cần nhiều dữ liệu hơn
-* Cấu hình embedding phức tạp hơn
 
 ## 🚀 Train model
 
@@ -227,8 +184,7 @@ python phobert/train_phobert.py --target sentiment
 
 | Model Architecture        | Accuracy   | F1-Score   | Advantages                   | Disadvantages          |
 | ------------------------- | ---------- | ---------- | ---------------------------- | ---------------------- |
-| TF-IDF + Machine Learning | 84.58%     | ~84.50%    | Rất nhanh, nhẹ               | Không hiểu ngữ cảnh    |
-| LSTM + Word2Vec           | Bổ sung    | Bổ sung    | Hiểu chuỗi văn bản tốt hơn   | Cần embedding phức tạp |
+| TF-IDF + Machine Learning | 78.59%     | 77.63%     | Rất nhanh, nhẹ               | Không hiểu ngữ cảnh    |
 | PhoBERT-base (VinAI)      | **88.17%** | **88.17%** | Hiểu sâu ngữ cảnh tiếng Việt | Tốn tài nguyên GPU     |
 
 ---
@@ -236,5 +192,4 @@ python phobert/train_phobert.py --target sentiment
 # 🏆 Conclusion
 
 * TF-IDF phù hợp cho các hệ thống nhẹ và cần tốc độ cao.
-* LSTM cải thiện khả năng hiểu ngữ cảnh nhưng yêu cầu dữ liệu và thời gian huấn luyện lớn hơn.
 * PhoBERT cho kết quả tốt nhất và là lựa chọn tối ưu cho bài toán phân tích cảm xúc tiếng Việt hiện đại.
