@@ -420,7 +420,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         TOPIC_TICKS  = []
         for l in TOPIC_LABELS:
             ten_vi = topic_vi(l)
-             if "chương trình" in ten_vi.lower():
+            if "chương trình" in ten_vi.lower():
                 TOPIC_TICKS.append("Chương trình")
             elif "cơ sở" in ten_vi.lower():
                 TOPIC_TICKS.append("Cơ sở VC")
