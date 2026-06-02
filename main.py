@@ -202,7 +202,7 @@ def topic_to_display_with_details(label_text, prob_dict):
 # SideBar Điều hướng
 # ==============================================================================
 with st.sidebar:
-    st.title("🎮 Hệ Thống Điều Khiển")
+    st.title("VietText Analyzer")
     st.markdown("---")
     page = st.radio(
         "Danh mục trang hệ thống:", 
