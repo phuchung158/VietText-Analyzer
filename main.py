@@ -1,14 +1,15 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import torch
-import pickle
+import re
 import os
 import time
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+import pickle
+import numpy as np
+import pandas as pd
+import torch
+import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 from utils.preprocessing import preprocess_pipeline
 
@@ -131,6 +132,26 @@ def tfidf_predict(texts, model, le):
     codes = model.predict(texts)
     return le.inverse_transform(codes)
 
+# --- BỔ SUNG: Hàm dự đoán kèm theo xác suất cho trang dự đoán Single (Real-time) ---
+@torch.no_grad()
+def phobert_predict_single_with_prob(text, model, tokenizer, le):
+    inputs = tokenizer([text], return_tensors="pt", truncation=True, padding=True, max_length=128)
+    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+    logits = model(**inputs).logits
+    probs  = torch.softmax(logits, dim=-1)
+    max_prob, id_tensor = torch.max(probs, dim=-1)
+    
+    label = le.inverse_transform(id_tensor.cpu().numpy())[0]
+    prob_val = max_prob.cpu().item()
+    return label, prob_val
+
+def tfidf_predict_single_with_prob(text, model, le):
+    prob_matrix = model.predict_proba([text])
+    max_idx = np.argmax(prob_matrix, axis=-1)[0]
+    prob_val = prob_matrix[0][max_idx]
+    label = le.inverse_transform([max_idx])[0]
+    return label, prob_val
+
 # ==============================================================================
 # CHUẨN HOÁ NHÃN SENTIMENT
 # ==============================================================================
@@ -227,7 +248,7 @@ if page == "🏠 Giới thiệu dự án & Dataset":
             st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
 
 # ==============================================================================
-# TRANG 2: REAL-TIME INFERENCE DỰ ĐOÁN SONG SONG
+# TRANG 2: REAL-TIME INFERENCE DỰ ĐOÁN SONG SONG (CÓ ĐỘ TIN CẬY / XÁC SUẤT)
 # ==============================================================================
 elif page == "⚡ Trình dự đoán song song":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
@@ -244,7 +265,7 @@ elif page == "⚡ Trình dự đoán song song":
             st.warning("⚠️ Vui lòng nhập nội dung trước khi bấm nút phân tích!")
         else:
             processed = preprocess_pipeline(user_input)
-            with st.expander("🔍 Văn bản sau phân tách từ ghép (PyVi)"):
+            with st.expander("🔍 Văn bản sau phân tách từ ghép"):
                 st.code(processed, language="text")
 
             # ── Sentiment ──────────────────────────────────────────────────────
@@ -255,8 +276,9 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label = tfidf_predict([processed], tfidf_sent_m, tfidf_sent_le)[0]
+                    label, prob = tfidf_predict_single_with_prob(processed, tfidf_sent_m, tfidf_sent_le)
                     label_to_display(label)
+                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
                 except Exception as e:
                     st.error(f"Lỗi TF-IDF Sentiment: {e}")
 
@@ -264,8 +286,9 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#e8f0fe;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: PhoBERT Transformer (SOTA)</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label = phobert_predict_batch([processed], phobert_sent_m, phobert_sent_t, phobert_sent_le)[0]
+                    label, prob = phobert_predict_single_with_prob(processed, phobert_sent_m, phobert_sent_t, phobert_sent_le)
                     label_to_display(label)
+                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
                 except Exception as e:
                     st.error(f"Lỗi PhoBERT Sentiment: {e}")
 
@@ -279,8 +302,9 @@ elif page == "⚡ Trình dự đoán song song":
                 st.markdown("<div style='background-color:#f0f2f6;padding:10px;border-radius:5px;'><b>🔹 Phương pháp: TF-IDF + ML Baseline</b></div>", unsafe_allow_html=True)
                 st.write("")
                 try:
-                    label = tfidf_predict([processed], tfidf_topic_m, tfidf_topic_le)[0]
+                    label, prob = tfidf_predict_single_with_prob(processed, tfidf_topic_m, tfidf_topic_le)
                     st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
+                    st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
                 except Exception as e:
                     st.error(f"Lỗi TF-IDF Topic: {e}")
 
@@ -289,8 +313,9 @@ elif page == "⚡ Trình dự đoán song song":
                 st.write("")
                 if has_phobert_topic:
                     try:
-                        label = phobert_predict_batch([processed], phobert_topic_m, phobert_topic_t, phobert_topic_le)[0]
+                        label, prob = phobert_predict_single_with_prob(processed, phobert_topic_m, phobert_topic_t, phobert_topic_le)
                         st.info(f"📌 **CHỦ ĐỀ DỰ ĐOÁN:** {topic_vi(label)}")
+                        st.caption(f"📊 Độ tin cậy (Xác suất): **{prob*100:.2f}%**")
                     except Exception as e:
                         st.error(f"Lỗi PhoBERT Topic: {e}")
                 else:
@@ -318,7 +343,7 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         t0       = time.time()
 
         # Bước 1: Tiền xử lý
-        status.text("⏳ Bước 1/4: Kích hoạt pipeline tiền xử lý và tách từ PyVi...")
+        status.text("⏳ Bước 1/4: Kích hoạt pipeline tiền xử lý...")
         cleaned = [preprocess_pipeline(str(s)) for s in sentences]
         progress.progress(10)
 
@@ -474,4 +499,3 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             if y_pred_phobert_topic:
                 fig_phobert = plot_cm(y_true_topic, y_pred_phobert_topic, TOPIC_LABELS, TOPIC_TICKS, "PhoBERT Topic Matrix", cmap="Greens")
                 st.pyplot(fig_phobert)
-
