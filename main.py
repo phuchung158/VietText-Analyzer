@@ -176,8 +176,12 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     st.divider()
 
     st.header("1. Giới thiệu đề tài")
-    st.write("""Hệ thống giải quyết đồng thời **hai bài toán NLP**:)
-
+    # Kiểm tra xem dòng cuối cùng của đoạn text đã có đủ 3 dấu nháy kép chưa
+    st.write("""
+    Hệ thống giải quyết đồng thời **hai bài toán NLP**:
+    1. Phân tích cảm xúc (Sentiment Analysis).
+    2. Phân loại chủ đề (Topic Classification).
+    """) 
     | Bài toán | Nhãn | Mô hình |
     |---|---|---|
     | Phân tích sắc thái (Sentiment) | Tiêu cực / Trung lập / Tích cực | TF-IDF + ML, PhoBERT |
