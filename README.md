@@ -185,7 +185,7 @@ python phobert/train_phobert.py --target sentiment
 | Model Architecture        | Accuracy   | F1-Score   | Advantages                   | Disadvantages          |
 | ------------------------- | ---------- | ---------- | ---------------------------- | ---------------------- |
 | TF-IDF + Machine Learning | 78.59%     | 77.63%     | Rất nhanh, nhẹ               | Không hiểu ngữ cảnh    |
-| PhoBERT-base (VinAI)      | **88.17%** | **88.17%** | Hiểu sâu ngữ cảnh tiếng Việt | Tốn tài nguyên GPU     |
+| PhoBERT-base              | **88.17%** | **88.17%** | Hiểu sâu ngữ cảnh tiếng Việt | Tốn tài nguyên GPU     |
 
 ---
 
