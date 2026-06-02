@@ -16,7 +16,8 @@ PhoBERT Sentiment
 
 MODEL_PHOBERT             = "./models/phobert"LABEL_ENCODER_PHOBERT     = "./models/phobert/label_encoder.pkl"
 
-PhoBERT Topic (optional — thêm sau khi train xong trên Kaggle)
+MODEL_PHOBERT_TOPIC = "./models/phobert_topic"
+LABEL_ENCODER_PHOBERT_TOPIC = "./models/phobert_topic/label_encoder.pkl")
 
 MODEL_PHOBERT_TOPIC       = "./models/phobert_topic"LABEL_ENCODER_PHOBERT_TOPIC = "./models/phobert_topic/label_encoder.pkl"
 
