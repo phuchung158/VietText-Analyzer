@@ -18,14 +18,12 @@ from utils.preprocessing import preprocess_pipeline
 # ==============================================================================
 st.set_page_config(page_title="VietText Analyzer Dashboard", page_icon="🚀", layout="wide")
 
-# --- ĐƯỜNG DẪN PHOBERT ---
 MODEL_PHOBERT               = "./models/phobert"
 LABEL_ENCODER_PHOBERT       = "./models/phobert/label_encoder.pkl"
 
 MODEL_PHOBERT_TOPIC         = "./models/phobert_topic"
 LABEL_ENCODER_PHOBERT_TOPIC = "./models/phobert_topic/label_encoder.pkl"
 
-# --- ĐƯỜNG DẪN TF-IDF ---
 MODEL_TFIDF_SENT            = "./models/tfidf/sentiment/baseline_sentiment_model.pkl"
 LABEL_ENCODER_TFIDF_SENT    = "./models/tfidf/sentiment/baseline_sentiment_label_encoder.pkl"
 
@@ -86,7 +84,7 @@ def load_all_models():
     with open(LABEL_ENCODER_PHOBERT, "rb") as f:
         phobert_sent_le = pickle.load(f)
 
-    # ── PhoBERT Topic (Tự động kích hoạt nếu tồn tại thư mục weights) ─────────
+    # ── PhoBERT Topic ─────────────────────────────────────────────────────────
     phobert_topic_m = phobert_topic_t = phobert_topic_le = None
     if os.path.exists(os.path.join(MODEL_PHOBERT_TOPIC, "model.safetensors")):
         try:
@@ -114,7 +112,7 @@ def load_all_models():
  DEVICE) = load_all_models()
 
 # ==============================================================================
-# HÀM TRỢ GIÚP DỰ ĐOÁN (HELPER PREDICT)
+# HÀM TRỢ GIÚP DỰ ĐOÁN
 # ==============================================================================
 @torch.no_grad()
 def phobert_predict_batch(texts, model, tokenizer, le, batch_size=32):
@@ -132,18 +130,14 @@ def tfidf_predict(texts, model, le):
     codes = model.predict(texts)
     return le.inverse_transform(codes)
 
-# --- Dự đoán đơn kèm mảng xác suất chi tiết cho Trang 2 ---
 @torch.no_grad()
 def phobert_predict_single_with_prob(text, model, tokenizer, le):
     inputs = tokenizer([text], return_tensors="pt", truncation=True, padding=True, max_length=128)
     inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
     logits = model(**inputs).logits
-    probs  = torch.softmax(logits, dim=-1).cpu().numpy()[0] # Mảng xác suất các lớp
-    
+    probs  = torch.softmax(logits, dim=-1).cpu().numpy()[0]
     max_idx = np.argmax(probs)
     label = le.inverse_transform([max_idx])[0]
-    
-    # Tạo dict ánh xạ: tên nhãn gốc -> xác suất
     prob_dict = {str(le.classes_[idx]): float(probs[idx]) for idx in range(len(le.classes_))}
     return label, prob_dict
 
@@ -151,12 +145,11 @@ def tfidf_predict_single_with_prob(text, model, le):
     prob_matrix = model.predict_proba([text])[0]
     max_idx = np.argmax(prob_matrix)
     label = le.inverse_transform([max_idx])[0]
-    
     prob_dict = {str(le.classes_[idx]): float(prob_matrix[idx]) for idx in range(len(le.classes_))}
     return label, prob_dict
 
 # ==============================================================================
-# CHUẨN HOÁ NHÃN SENTIMENT & HIỂN THỊ CHI TIẾT
+# CHUẨN HOÁ NHÃN SENTIMENT
 # ==============================================================================
 def standardize_sentiment(label_list):
     out = []
@@ -173,7 +166,6 @@ def standardize_sentiment(label_list):
     return out
 
 def label_to_display_with_details(label_text, prob_dict):
-    """Hiển thị nhãn chiến thắng kèm bảng phân rã xác suất chi tiết Tiêu cực/Trung lập/Tích cực"""
     t = str(label_text).upper()
     if any(w in t for w in ["POS", "TÍCH CỰC", "2", "POSITIVE"]):
         st.success("🎯 **SẮC THÁI CHÍNH:** TÍCH CỰC 😍")
@@ -182,7 +174,6 @@ def label_to_display_with_details(label_text, prob_dict):
     else:
         st.warning("🎯 **SẮC THÁI CHÍNH:** TRUNG LẬP 😐")
         
-    # Chuẩn hóa key của prob_dict về dạng hiển thị thân thiện
     display_probs = {"Tiêu cực 😡": 0.0, "Trung lập 😐": 0.0, "Tích cực 😍": 0.0}
     for k, v in prob_dict.items():
         sk = str(k).strip().lower()
@@ -195,23 +186,20 @@ def label_to_display_with_details(label_text, prob_dict):
         else:
             display_probs[k] = v
 
-    # Hiển thị thanh tiến trình xác suất trực quan
     st.markdown("**📊 Phân bổ xác suất chi tiết:**")
     for name, score in display_probs.items():
         st.write(f"{name}: **{score * 100:.2f}%**")
         st.progress(int(score * 100))
 
 def topic_to_display_with_details(label_text, prob_dict):
-    """Hiển thị nhãn chủ đề kèm bảng phân rã xác suất chi tiết cho từng Topic"""
     st.info(f"📌 **CHỦ ĐỀ CHÍNH:** {topic_vi(label_text)}")
-    
     st.markdown("**📊 Phân bổ xác suất chi tiết:**")
     for k, v in prob_dict.items():
         st.write(f"• {topic_vi(k)}: **{v * 100:.2f}%**")
         st.progress(int(v * 100))
 
 # ==============================================================================
-# SideBar Điều hướng nâng cao
+# SideBar Điều hướng
 # ==============================================================================
 with st.sidebar:
     st.title("🎮 Hệ Thống Điều Khiển")
@@ -227,7 +215,7 @@ with st.sidebar:
     st.markdown("---")
 
 # ==============================================================================
-# TRANG 1: GIỚI THIỆU & THỐNG KÊ DATASET (ĐÃ CẬP NHẬT PHÂN TÍCH DATASET CHI TIẾT)
+# TRANG 1: GIỚI THIỆU & THỐNG KÊ DATASET (ĐÃ ĐỔI THÀNH DỮ LIỆU ĐỘNG 100%)
 # ==============================================================================
 if page == "🏠 Giới thiệu dự án & Dataset":
     st.title("🔮 VietText Analyzer — NLP Research Dashboard")
@@ -241,15 +229,11 @@ if page == "🏠 Giới thiệu dự án & Dataset":
     2. **Phân loại chủ đề (Topic Classification):** Tự động bóc tách phân loại nhóm nội dung phản hồi.
     """) 
     
-    st.markdown("""
-    | Bài toán (Task) | Nhãn phân loại (Labels) | Tiếp cận công nghệ |
-    |---|---|---|
-    | **Phân tích sắc thái (Sentiment)** | Tiêu cực / Trung lập / Tích cực | TF-IDF + Linear ML, PhoBERT Transformer |
-    | **Phân loại chủ đề (Topic)** | Curriculum / Facility / Lecturer / Other | TF-IDF + Linear ML |
-    """)
     st.divider()
 
     st.header("2. Khám phá Bộ dữ liệu")
+    
+    # Hàm đọc tập Train động
     @st.cache_data
     def load_dataset():
         _require_file(DATASET_EXCEL, "Dataset train.xlsx")
@@ -261,39 +245,57 @@ if page == "🏠 Giới thiệu dự án & Dataset":
         df = df[df["sentence"].astype(str).str.lower() != "sentence"]
         return df
 
-    df = load_dataset()
+    # Hàm đọc tập Validation động để lấy số dòng thật
+    @st.cache_data
+    def get_val_count():
+        if os.path.exists(VALID_PATH):
+            df_v = pd.read_excel(VALID_PATH)
+            df_v = df_v[df_v.iloc[:, 0].astype(str).str.lower() != "sentence"]
+            return len(df_v)
+        return 0
+
+    df_train = load_dataset()
+    count_train = len(df_train)
+    count_val = get_val_count()
     
-    # --- THÀNH PHẦN MỚI: Widget hiển thị KPI tổng quy mô Bộ dữ liệu ---
-    total_train = len(df)
+    # Đọc thông số phân bố nhãn thực tế từ file của bạn để đưa vào nhận xét
+    try:
+        sent_counts = df_train["sentiment_label"].value_counts().to_dict()
+        topic_counts = df_train["topic_label"].value_counts().to_dict()
+    except:
+        sent_counts = {}
+        topic_counts = {}
+
+    # Hiển thị số lượng động thật 100% lên Widget KPI
     kpi_col1, kpi_col2 = st.columns(2)
     with kpi_col1:
-        st.metric(label="📋 Tổng quy mô tập huấn luyện (Train Rows)", value=f"{total_train:,} mẫu")
+        st.metric(label="📋 Quy mô tập huấn luyện thực tế (Train Rows)", value=f"{count_train:,} mẫu")
     with kpi_col2:
-        st.metric(label="🧪 Tổng quy mô tập kiểm thử (Validation Rows)", value="1,114 mẫu")
+        st.metric(label="🧪 Quy mô tập kiểm thử thực tế (Validation Rows)", value=f"{count_val:,} mẫu")
 
-    st.subheader("📑 100 dòng dữ liệu đầu tiên (Xem trước cấu trúc)")
-    display_cols = [c for c in ["sentence", "sentiment_label", "topic_label"] if c in df.columns]
-    st.dataframe(df[display_cols].head(100), use_container_width=True)
+    st.subheader("📑 Xem trước cấu trúc dữ liệu thô (100 dòng đầu)")
+    display_cols = [c for c in ["sentence", "sentiment_label", "topic_label"] if c in df_train.columns]
+    st.dataframe(df_train[display_cols].head(100), use_container_width=True)
     st.divider()
 
     st.header("3. Thống kê phân bố dữ liệu & Nhận xét khoa học")
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📊 Phân bố Sắc thái (Sentiment Distribution)")
-        if "sentiment_label" in df.columns:
-            st.bar_chart(df["sentiment_label"].value_counts(), color="#ff4b4b")
+        st.subheader("📊 Phân bố Sắc thái thực tế")
+        if "sentiment_label" in df_train.columns:
+            st.bar_chart(df_train["sentiment_label"].value_counts(), color="#ff4b4b")
     with col2:
-        st.subheader("📊 Phân bố Chủ đề (Topic Distribution)")
-        if "topic_label" in df.columns:
-            st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
+        st.subheader("📊 Phân bố Chủ đề thực tế")
+        if "topic_label" in df_train.columns:
+            st.bar_chart(df_train["topic_label"].value_counts(), color="#0068c9")
             
-    # --- THÀNH PHẦN MỚI: Bảng nhận xét học thuật hiển thị trực tiếp trên Dashboard ---
+    # Phần nhận xét tự động binding theo các biến số dòng thật
     st.markdown("### 📝 Phân tích & Nhận xét chuyên sâu về tập dữ liệu")
-    st.info("""
-    1. **Đặc thù Ngôn ngữ và Văn phong Học đường:** Bộ dữ liệu bao quát hơn 11.000 câu văn bản thô thể hiện rõ nét ngôn ngữ tự nhiên của sinh viên Việt Nam. Tập dữ liệu chứa mật độ cao các cấu trúc ngữ cảnh phức tạp như bẫy phủ định đảo chiều (*không khó hiểu*), tương phản hành vi (*ban đầu tưởng... ai dè...*), cùng các từ lóng mạng và Teencode học đường (*đỉnh chóp, cùi bắp, chán chả buồn nói*). Đây là tác nhân gây nhiễu rất mạnh đối với các mô hình toán học nông truyền thống.
-    2. **Sự mất cân bằng nhãn sắc thái (Sentiment Imbalance):** Biểu đồ thống kê cho thấy sự mất cân bằng rõ rệt khi nhãn **Tích cực 😍** chiếm số lượng áp đảo tuyệt đối (trên 6.000 dòng), kế tiếp là nhãn **Tiêu cực 😡** (gần 4.000 dòng), và nhãn **Trung lập 😐** chiếm tỷ lệ thấp nhất (dưới 1.000 dòng). Hiện tượng này phản ánh chính xác tâm lý thực tế: sinh viên có xu hướng chủ động thực hiện phản hồi khảo sát khi họ đạt trạng thái cảm xúc rõ ràng (rất hài lòng để khen ngợi hoặc rất bức xúc để góp ý), và rất ít khi viết câu khảo sát mang tính trung lập, liệt kê sự kiện khách quan.
-    3. **Đặc trưng phân bố chủ đề (Topic Imbalance):** Trọng tâm đánh giá của sinh viên tập trung cốt lõi vào khía cạnh con người và kiến thức với hai chủ đề **Giảng viên 👨‍🏫** (gần 5.000 dòng) và **Chương trình đào tạo 📚** (gần 3.000 dòng) chiếm hơn 70% tổng trọng số bộ dữ liệu. Các yếu tố ngoại cảnh hỗ trợ như **Cơ sở vật chất 🏫** có tỷ trọng xuất hiện thấp nhất (hơn 1.000 dòng).
-    4. **Định hướng chiến lược huấn luyện:** Sự mất cân bằng dữ liệu giữa các nhãn (Data Imbalance) sẽ khiến mô hình toán học đếm tần suất như TF-IDF bị học lệch sang các nhóm đa số. Để khắc phục triệt để lỗ hổng này, việc áp dụng mạng học sâu dựa trên kiến trúc Multi-head Attention của **PhoBERT Transformer** là hướng tiếp cận tối ưu, giúp hệ thống trích xuất ma trận ngữ cảnh đa chiều thay vì đếm từ đơn thuần, đảm bảo giữ vững hiệu năng ổn định trên cả các nhóm nhãn thiểu số.
+    st.info(f"""
+    1. **Đặc thù Ngôn ngữ và Văn phong Học đường:** Bộ dữ liệu bao quát hoàn toàn **{count_train:,} câu văn bản huấn luyện** và **{count_val:,} câu kiểm thử thực tế**. Văn bản chứa mật độ cao các cấu trúc ngữ cảnh phức tạp của sinh viên Việt Nam như bẫy phủ định đảo chiều, tương phản hành vi, cùng các từ lóng mạng và Teencode học đường. Đây là tác nhân gây nhiễu rất mạnh đối với các mô hình thuật toán học máy truyền thống.
+    2. **Hiện tượng mất cân bằng nhãn sắc thái (Sentiment Imbalance):** Biểu đồ thống kê tự động phản ánh sự mất cân bằng đặc trưng trong môi trường giáo dục. Sinh viên có xu hướng chủ động thực hiện phản hồi khảo sát khi họ đạt trạng thái cảm xúc rõ ràng (rất hài lòng để khen ngợi hoặc rất bức xúc để góp ý phản hồi), dẫn tới số lượng mẫu trung lập luôn chiếm tỷ lệ thấp nhất hệ thống.
+    3. **Đặc trưng phân bố chủ đề (Topic Imbalance):** Trọng tâm đánh giá của sinh viên tập trung cốt lõi vào khía cạnh con người và kiến thức truyền thụ (Giảng viên & Chương trình đào tạo) chiếm tỷ trọng áp đảo, vượt trội so với các khía cạnh ngoại cảnh phụ trợ như Cơ sở vật chất.
+    4. **Định hướng chiến lược huấn luyện:** Sự mất cân bằng dữ liệu giữa các nhóm nhãn này sẽ khiến mô hình toán học đếm tần suất thông thường (như TF-IDF) dễ bị học lệch. Để khắc phục lỗ hổng này, việc áp dụng mạng học sâu dựa trên kiến trúc Multi-head Attention của **PhoBERT Transformer** là hướng đi tối ưu, giúp hệ thống trích xuất ma trận ngữ cảnh đa chiều, đảm bảo giữ vững hiệu năng ổn định trên toàn bộ các lớp dữ liệu.
     """)
 
 # ==============================================================================
@@ -387,12 +389,10 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         status   = st.empty()
         t0       = time.time()
 
-        # Bước 1: Tiền xử lý
         status.text("⏳ Bước 1/4: Kích hoạt pipeline tiền xử lý...")
         cleaned = [preprocess_pipeline(str(s)) for s in sentences]
         progress.progress(10)
 
-        # Bước 2: TF-IDF (cả 2 task cùng lúc)
         status.text("⏳ Bước 2/4: Mô hình toán học TF-IDF đang tính toán toán tử nền...")
         try:
             y_pred_tfidf_sent_raw  = tfidf_predict(cleaned, tfidf_sent_m,  tfidf_sent_le)
@@ -402,7 +402,6 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             st.stop()
         progress.progress(35)
 
-        # Bước 3: PhoBERT Sentiment
         PHOBERT_BATCH = 32
         total_batches = int(np.ceil(total_rows / PHOBERT_BATCH))
         y_pred_phobert_sent_raw = []
@@ -419,7 +418,6 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
             progress.progress(35 + int((i / len(cleaned)) * 40))
         progress.progress(75)
 
-        # Bước 4: PhoBERT Topic (nếu có)
         y_pred_phobert_topic_raw = []
         if phobert_topic_m is not None:
             for i in range(0, len(cleaned), PHOBERT_BATCH):
@@ -439,18 +437,15 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         progress.progress(100)
         status.success(f"🎉 Hệ thống tính toán hoàn tất trong thời gian kỷ lục: {time.time() - t0:.2f} giây!")
 
-        # ── Chuẩn hoá nhãn sentiment ──────────────────────────────────────────
         y_true_sent         = standardize_sentiment(y_true_sent_raw)
         y_pred_tfidf_sent   = standardize_sentiment(y_pred_tfidf_sent_raw)
         y_pred_phobert_sent = standardize_sentiment(y_pred_phobert_sent_raw)
 
-        # ── Chuẩn hoá nhãn topic ──────────────────────────────────────────────
         def std_topic(lst): return [str(l).strip().lower() for l in lst]
         y_true_topic         = std_topic(y_true_topic_raw)
         y_pred_tfidf_topic   = std_topic(y_pred_tfidf_topic_raw)
         y_pred_phobert_topic = std_topic(y_pred_phobert_topic_raw) if y_pred_phobert_topic_raw else []
 
-        # ── Hàm vẽ confusion matrix ───────────────────────────────────────────
         def plot_cm(y_t, y_p, labels, tick_names, title, cmap="Blues"):
             cm  = confusion_matrix(y_t, y_p, labels=labels)
             fig, ax = plt.subplots(figsize=(5, 4))
