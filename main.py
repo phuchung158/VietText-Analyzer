@@ -220,12 +220,11 @@ with st.sidebar:
         "Danh mục trang hệ thống:", 
         [
             "🏠 Giới thiệu dự án & Dataset",
-            "⚡ Trình dự đoán song song",
+            "⚡ Mô Hình Dự Đoán",
             "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn",
         ]
     )
     st.markdown("---")
-    st.caption("🔥 Powered by PhoBERT-base & Streamlit")
 
 # ==============================================================================
 # TRANG 1: GIỚI THIỆU & THỐNG KÊ DATASET
@@ -280,9 +279,9 @@ if page == "🏠 Giới thiệu dự án & Dataset":
             st.bar_chart(df["topic_label"].value_counts(), color="#0068c9")
 
 # ==============================================================================
-# TRANG 2: REAL-TIME INFERENCE DỰ ĐOÁN SONG SONG (XÁC SUẤT ĐẦY ĐỦ CÁC LỚP)
+# TRANG 2: Mô Hình Dự Đoán
 # ==============================================================================
-elif page == "⚡ Trình dự đoán song song":
+elif page == "⚡ Mô Hình Dự Đoán":
     st.title("⚡ Real-time Multi-Model Inference Dashboard")
     st.markdown("Nhập câu đánh giá học thuật — hệ thống phân tích sắc thái và chủ đề song song thời gian thực.")
 
@@ -292,7 +291,7 @@ elif page == "⚡ Trình dự đoán song song":
         height=120
     )
 
-    if st.button("Kích hoạt phân tích 🚀", type="primary"):
+    if st.button(" phân tích ", type="primary"):
         if not user_input.strip():
             st.warning("⚠️ Vui lòng nhập nội dung trước khi bấm nút phân tích!")
         else:
