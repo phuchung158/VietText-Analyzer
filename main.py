@@ -463,4 +463,4 @@ elif page == "📊 Chỉ số thực nghiệm & Ma trận nhầm lẫn":
         if y_pred_phobert_topic:
             tc1, tc2 = st.columns(2)
             with tc1:
-                st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOP
+                st.pyplot(plot_cm(y_true_topic, y_pred_tfidf_topic, TOPIC_LABELS, TOPIC_TICKS, "TF-IDF Topic Matrix", cmap="Greens"))
